@@ -25,9 +25,9 @@ No subscriptions are moved into the hierarchy. Subscription placement is chapter
 | Folder | What it deploys |
 | --- | --- |
 | `terraform/` | The hierarchy plus the **full** ALZ policy set from the library: 149 custom policy definitions, 43 custom initiatives and 5 custom role definitions on the intermediate root, 123 policy assignments across the archetypes, and the role assignments their managed identities need. |
-| `bicep/` | The same hierarchy plus a **subset** of the ALZ policies (12 assignments, 3 custom definitions, 2 custom initiatives), copied unchanged from the same library release. See [Bicep and the full policy set](#bicep-and-the-full-policy-set). |
+| `bicep/` | The same hierarchy plus a **subset** of the ALZ policies (13 assignments, 3 custom definitions, 2 custom initiatives), copied from the same library release (the two initiative files are pre-escaped for Bicep; see below). See [Bicep and the full policy set](#bicep-and-the-full-policy-set). |
 
-Tested: 7 October 2026 (Terraform 1.13.4): Terraform apply (533 resources, enforcement DoNotEnforce) and destroy in a test tenant. Bicep: not yet.
+Tested: 7 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply (533 resources, enforcement DoNotEnforce) and destroy; Bicep tenant deployment (12 management groups, 13 assignments) and the clean-up script below, in a test tenant.
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ Tested: 7 October 2026 (Terraform 1.13.4): Terraform apply (533 resources, enfor
   # after "Access management for Azure resources" is turned on in Microsoft Entra ID > Properties
   az role assignment create --assignee "<your-user-or-service-principal-object-id>" --scope "/" --role "Owner"
   ```
-  The Bicep version is a **tenant-scope** deployment, which needs permission at `/` itself (Learn: *Tenant deployments with Bicep file*, "Required access"). Remove the elevated access when you've finished.
+  The Bicep version is a **tenant-scope** deployment, which needs permission to create deployments at `/` itself (Learn: *Tenant deployments with Bicep file*, "Required access"). User Access Administrator from elevation isn't enough on its own, because it can't write deployments; after elevating, assign yourself Owner at `/` (`az role assignment create --assignee-object-id <your-object-id> --assignee-principal-type User --role Owner --scope "/"`). Remove both the Owner and the User Access Administrator assignments at `/` when you've finished (`az role assignment delete --assignee <your-object-id> --role Owner --scope "/"`, and the same for "User Access Administrator").
 - **Licences:** none. Management groups and Azure Policy need no licence.
 - **Tools:** Terraform 1.12 or later (validated with 1.13.4). Bicep CLI 0.48.1 or later, and Azure CLI 2.53.0 or later to deploy a `.bicepparam` file.
 
@@ -128,13 +128,13 @@ done
 az deployment tenant delete --name ch06-alz
 ```
 
-The commands are the same if you deployed under a parent other than the tenant root group.
+The commands are the same if you deployed under a parent other than the tenant root group. Management group deletions finish within seconds (`az account management-group show --name <id>` reports *not found*), but `az account management-group list` can keep showing them for several minutes.
 
 ### Bicep and the full policy set
 
 There's no single AVM Bicep module that deploys the whole ALZ architecture from the library the way `avm-ptn-alz` does in Terraform. The AVM Bicep pattern modules for ALZ are `avm/ptn/alz/empty` (one management group with its definitions, assignments and role assignments) and `avm/ptn/alz/ama`. **The full ALZ policy set in Bicep comes from the ALZ Bicep accelerator** (`Azure/alz-bicep-accelerator`, `templates/core/governance`), which ships the whole library as JSON files and loads them per management group with `loadJsonContent()`.
 
-This chapter takes the same approach on a small scale. `bicep/lib/` holds 17 files copied unchanged from platform/alz 2026.10.0, at least one for each archetype that has assignments:
+This chapter takes the same approach on a small scale. `bicep/lib/` holds 17 files copied from platform/alz 2026.10.0, at least one for each archetype that has assignments:
 
 | Management group | Assignments (library name) |
 | --- | --- |
@@ -145,6 +145,10 @@ This chapter takes the same approach on a small scale. `bicep/lib/` holds 17 fil
 | Local | Enforce-ALDO-Services |
 | Sandbox | Enforce-ALZ-Sandbox (custom initiative) |
 | Decommissioned | Enforce-ALZ-Decomm (custom initiative, includes deployIfNotExists) |
+
+**Two library files are edited: the initiatives are pre-escaped.** `Enforce-ALZ-Sandbox` and `Enforce-ALZ-Decomm` pass `[parameters('...')]` strings to their member policies. Bicep escapes a string that starts with `[` once (`[[`), but the AVM module hands the initiative to a nested deployment, which strips that escape and then tries to evaluate `[parameters(...)]` as a template expression; the deployment fails with *"The template parameter 'effectNotAllowedResources' is not found"*. The fix is the one the ALZ Bicep accelerator uses: those strings start with `[[` in the files here (`"[[parameters(`). Policy definitions don't need it, because the module escapes their rules itself.
+
+**Expect one retry.** On a fresh tenant the first deployment can fail at the Sandbox or Decommissioned assignment with *"The policy definition specified in policy assignment ... is out of scope ... allow up to 30 minutes for the hierarchy changes to apply"*. The management groups and initiatives were created moments earlier and Azure hasn't caught up. Wait a few minutes and run the same `az deployment tenant create` again; it is idempotent. In testing it succeeded on the third run, about 15 minutes after the first.
 
 Platform, Security, Management, Connectivity and Online get no assignments in this subset (in the library itself Security, Management and Online have none). For the complete set use the accelerator, or the Terraform version here.
 
