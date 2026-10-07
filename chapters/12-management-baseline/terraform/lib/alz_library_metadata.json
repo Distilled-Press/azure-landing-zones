@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Azure/Azure-Landing-Zones-Library/main/schemas/library_metadata.json",
+  "name": "chapter12",
+  "display_name": "Chapter 12 - AMBA-ALZ on one management group",
+  "description": "Adds a single-management-group architecture on top of the AMBA library. The archetypes, policy definitions, initiatives and assignments come unchanged from the dependency below.",
+  "dependencies": [
+    {
+      "path": "platform/amba",
+      "ref": "2026.06.2"
+    }
+  ]
+}

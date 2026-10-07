@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+
+# Required: the management subscription.
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+prefix   = "alz"
+location = "uksouth"
+
+# Workspace: 30 days analytics retention, no daily cap. A cap stops collection
+# for the rest of the day when reached; use it only as a safety net.
+log_analytics_retention_in_days = 30
+# log_analytics_daily_quota_gb  = 1
+
+# Each NEW address receives a "Verify your email address" message with a
+# one-time passcode that expires after 30 minutes. Verify it, or the address
+# gets no alerts.
+action_group_email_addresses = ["platform-team@example.com"]
+
+service_health_alert_enabled = true
+# service_health_regions     = ["UK South", "UK West", "Global"]
+
+# ---- AMBA-ALZ (opt-in) ----
+# deploy_amba              = true
+# amba_management_group_id = "alz"          # must match lib/...amba_single...json (set-amba-scope helper)
+# amba_enforcement_mode    = "DoNotEnforce" # "Default" deploys alerts into subscriptions under the MG
+
+# tags = { environment = "test" }
+# enable_telemetry = false

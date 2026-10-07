@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+
+subscription_id = "00000000-0000-0000-0000-000000000000" # connectivity subscription
+prefix          = "alz"
+location        = "uksouth"
+
+# --- Address plan (defaults shown) ---
+# hub_address_space            = "10.10.0.0/22"
+# spoke_address_space          = "10.11.0.0/24"
+# spoke_subnet_prefix          = "10.11.0.0/26"
+# other_spoke_address_prefixes = ["10.100.0.0/16"] # chapter 7's vended spokes
+
+# --- Azure Firewall: billed per hour. Destroy when you've finished testing. ---
+deploy_firewall   = false
+firewall_sku_tier = "Basic" # Basic | Standard | Premium
+# spoke_to_spoke_ports = ["22", "443", "3389"]
+
+# --- VPN gateway: billed per hour, 45+ minutes to create and to delete. ---
+deploy_vpn_gateway = false
+vpn_gateway_sku    = "VpnGw1AZ"
+
+tags = {
+  environment = "test"
+  managedBy   = "terraform"
+}

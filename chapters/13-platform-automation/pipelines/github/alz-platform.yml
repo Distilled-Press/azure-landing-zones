@@ -1,0 +1,209 @@
+# Platform pipeline for chapter 6's Terraform (management groups and ALZ policy).
+# Copy this file to .github/workflows/alz-platform.yml in the repository that
+# holds the platform code. Nothing here is a secret: the workflow signs in with
+# OpenID Connect (workload identity federation) to the identities that
+# chapter 13's identity code creates.
+#
+#   pull request to main -> plan with the read-only identity, plan posted on the PR
+#   push to main         -> plan again, then apply the saved plan with the
+#                           Owner identity after approval on the alz-apply environment
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables):
+#   AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   AZURE_CLIENT_ID_PLAN, AZURE_CLIENT_ID_APPLY
+#   BACKEND_RESOURCE_GROUP, BACKEND_STORAGE_ACCOUNT, BACKEND_CONTAINER
+# Environment: alz-apply, with required reviewers and "main" as the only
+# deployment branch.
+
+name: alz-platform
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - chapters/06-resource-organisation/terraform/**
+      - .github/workflows/alz-platform.yml
+  push:
+    branches: [main]
+    paths:
+      - chapters/06-resource-organisation/terraform/**
+      - .github/workflows/alz-platform.yml
+  workflow_dispatch:
+
+# Default: nothing. Each job asks for what it needs.
+permissions: {}
+
+# One platform run at a time; never cancel an apply half-way.
+concurrency:
+  group: alz-platform
+  cancel-in-progress: false
+
+env:
+  TF_ROOT: chapters/06-resource-organisation/terraform
+  TF_VERSION: 1.13.4
+  TF_IN_AUTOMATION: "true"
+  # OIDC for every provider and for the azurerm state backend. The providers
+  # read GitHub's ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN themselves, which exist
+  # because the job has id-token: write.
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true" # backend: Entra ID auth to the blob, no account keys
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    # No environment: on a pull request the token subject is
+    #   repo:<org>/<repo>:pull_request
+    # and on a push to main it is
+    #   repo:<org>/<repo>:ref:refs/heads/main
+    # Both are federated credentials on the plan identity (Reader).
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Azure login (OIDC, plan identity)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      # Chapter 6 has no backend block (it runs with local state from a
+      # laptop). The pipeline adds one, so state lives in the storage account.
+      - name: Add the azurerm backend
+        run: printf 'terraform {\n  backend "azurerm" {}\n}\n' > ci_backend.tf
+
+      - name: Terraform init
+        run: >
+          terraform init -input=false
+          -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.BACKEND_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}"
+          -backend-config="key=alz-platform.tfstate"
+
+      - name: Terraform fmt and validate
+        run: |
+          terraform fmt -check -recursive
+          terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan -input=false -lock-timeout=10m -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+
+      - name: Upload the plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: tfplan
+          path: |
+            ${{ env.TF_ROOT }}/tfplan
+            ${{ env.TF_ROOT }}/plan.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Post the plan on the pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        env:
+          PLAN_FILE: ${{ env.TF_ROOT }}/plan.txt
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync(process.env.PLAN_FILE, 'utf8');
+            const max = 60000; // a comment holds 65,536 characters
+            if (plan.length > max) {
+              plan = plan.substring(plan.length - max);
+              plan = '... (start of plan cut; the full plan is in the tfplan artifact)\n' + plan;
+            }
+            const summary = (plan.match(/^Plan: .*$/m) || plan.match(/^No changes\..*$/m) || ['(see plan)'])[0];
+            const body = [
+              `#### Terraform plan: \`${summary}\``,
+              '<details><summary>Show plan</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '</details>',
+              '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  apply:
+    name: Apply
+    needs: plan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The environment's required reviewers approve before this job starts.
+    # Its token subject is repo:<org>/<repo>:environment:alz-apply, the only
+    # federated credential on the apply identity (Owner).
+    environment: alz-apply
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Azure login (OIDC, apply identity)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Add the azurerm backend
+        run: printf 'terraform {\n  backend "azurerm" {}\n}\n' > ci_backend.tf
+
+      - name: Terraform init
+        run: >
+          terraform init -input=false
+          -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.BACKEND_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}"
+          -backend-config="key=alz-platform.tfstate"
+
+      - name: Download the plan
+        uses: actions/download-artifact@v8
+        with:
+          name: tfplan
+          path: ${{ env.TF_ROOT }}
+
+      # Applies exactly what was planned (and reviewed). If the state changed
+      # since the plan, Terraform refuses the stale plan and the run fails.
+      - name: Terraform apply
+        run: terraform apply -input=false -lock-timeout=10m tfplan

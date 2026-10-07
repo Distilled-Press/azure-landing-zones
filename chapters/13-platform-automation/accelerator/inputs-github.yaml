@@ -1,0 +1,59 @@
+---
+# Azure Landing Zones IaC Accelerator: bootstrap inputs for Terraform + GitHub.
+# Based on the accelerator's example (alz-terraform-accelerator
+# templates/platform_landing_zone/examples/bootstrap/inputs-github.yaml).
+# Placeholders in <angle brackets>. Keep real tokens OUT of this file: supply
+# them as environment variables (see README).
+#
+# Decision numbers refer to the accelerator's Phase 0 planning checklist.
+
+# Basic inputs (do not change for this scenario)
+iac_type: "terraform"
+bootstrap_module_name: "alz_github"
+starter_module_name: "platform_landing_zone"
+
+## Decision 4: region for the bootstrap resources (state storage, identities)
+bootstrap_location: "uksouth"
+
+## Decision 6: parent management group (must exist). Empty = Tenant Root Group.
+# For a test, create a management group first and put its ID here, so the
+# whole platform hierarchy is built underneath it.
+root_parent_management_group_id: "<test-parent-management-group-id>"
+
+## Decision 7: platform subscriptions (all four recommended; SMB scenarios need
+## management and connectivity only)
+subscription_ids:
+  management: "00000000-0000-0000-0000-000000000000"
+  identity: "00000000-0000-0000-0000-000000000000"
+  connectivity: "00000000-0000-0000-0000-000000000000"
+  security: "00000000-0000-0000-0000-000000000000"
+
+## Decision 8: bootstrap subscription. Empty = the subscription selected in
+## Azure CLI (the docs recommend the management subscription).
+bootstrap_subscription_id: ""
+
+## Decision 9: naming. Defaults give names like rg-alz-mgmt-state-uksouth-1,
+## id-alz-mgmt-uksouth-plan-1, repositories alz-mgmt and alz-mgmt-templates.
+service_name: "alz"
+environment_name: "mgmt"
+postfix_number: 1
+
+## Decision 10: runners and networking.
+# false/false = GitHub-hosted runners and public networking: nothing billable
+# beyond the state storage account. true/true creates a virtual network, NAT
+# gateway, public IP, private endpoints, a container registry and container
+# instances for self-hosted runners, all billed while they exist.
+use_self_hosted_runners: false
+use_private_networking: false
+
+## Decision 11: GitHub settings
+# The PAT ("token-1"): leave these lines commented out and set the environment
+# variable TF_VAR_github_personal_access_token instead, so no token sits in a file.
+# github_personal_access_token: "<token-1>"
+# Only when use_self_hosted_runners is true ("token-2"; or TF_VAR_github_runners_personal_access_token):
+# github_runners_personal_access_token: "<token-2>"
+# The part of the URL after github.com/. Must be an organisation, not a personal account.
+github_organization_name: "<github-organization>"
+# github_organization_domain_name: "<enterprise-name>.ghe.com"  # GitHub Enterprise Cloud with data residency only
+# GitHub users or org/team slugs who approve the apply job.
+apply_approvers: ["<github-user>"]

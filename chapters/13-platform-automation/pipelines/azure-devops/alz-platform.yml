@@ -1,0 +1,154 @@
+# Platform pipeline for chapter 6's Terraform, Azure DevOps version.
+# Create a pipeline from this file (Pipelines > New pipeline > existing YAML).
+# Nothing here is a secret: Azure sign-in goes through two Azure Resource
+# Manager service connections that use workload identity federation with
+# chapter 13's user-assigned managed identities.
+#
+#   pull request to main -> Plan stage only (needs a build validation branch
+#                           policy on main when the code is in Azure Repos)
+#   merge to main        -> Plan, then Apply after approval on the alz-apply environment
+#
+# Set up first (see README):
+#   service connections  sc-alz-plan (plan identity), sc-alz-apply (apply identity)
+#   environment          alz-apply, with an Approvals check
+#   variables below      backend storage account details
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - chapters/06-resource-organisation/terraform
+
+# GitHub-hosted code: run the Plan stage for pull requests to main.
+# Azure Repos ignores this; use a build validation branch policy instead.
+pr:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - chapters/06-resource-organisation/terraform
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  tfRoot: chapters/06-resource-organisation/terraform
+  tfVersion: 1.13.4
+  serviceConnectionPlan: sc-alz-plan
+  serviceConnectionApply: sc-alz-apply
+  backendResourceGroup: rg-alz-platform-automation-uksouth
+  backendStorageAccount: stalztfstate000000 # from the identity code's state_backend output
+  backendContainer: tfstate
+  backendKey: alz-platform.tfstate
+  TF_IN_AUTOMATION: "true"
+
+stages:
+  - stage: Plan
+    jobs:
+      - job: Plan
+        steps:
+          - checkout: self
+
+          - bash: |
+              set -euo pipefail
+              curl -sSLo terraform.zip "https://releases.hashicorp.com/terraform/$(tfVersion)/terraform_$(tfVersion)_linux_amd64.zip"
+              unzip -oq terraform.zip -d "$(Agent.ToolsDirectory)/terraform"
+              echo "##vso[task.prependpath]$(Agent.ToolsDirectory)/terraform"
+            displayName: Install Terraform $(tfVersion)
+
+          # Chapter 6 has no backend block; the pipeline adds one.
+          - bash: printf 'terraform {\n  backend "azurerm" {}\n}\n' > ci_backend.tf
+            workingDirectory: $(tfRoot)
+            displayName: Add the azurerm backend
+
+          # AzureCLI@2 signs in through the service connection. With
+          # addSpnToEnvironment it also exposes the federated ID token
+          # ($idToken), the client ID and the tenant ID, which Terraform's
+          # providers and backend use for OIDC.
+          - task: AzureCLI@2
+            displayName: Terraform init, validate and plan
+            inputs:
+              azureSubscription: $(serviceConnectionPlan)
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              workingDirectory: $(tfRoot)
+              inlineScript: |
+                set -euo pipefail
+                export ARM_USE_OIDC=true
+                export ARM_USE_AZUREAD=true
+                export ARM_OIDC_TOKEN="$idToken"
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+
+                terraform init -input=false \
+                  -backend-config="resource_group_name=$(backendResourceGroup)" \
+                  -backend-config="storage_account_name=$(backendStorageAccount)" \
+                  -backend-config="container_name=$(backendContainer)" \
+                  -backend-config="key=$(backendKey)"
+                terraform fmt -check -recursive
+                terraform validate
+                terraform plan -input=false -lock-timeout=10m -out=tfplan
+                terraform show -no-color tfplan > plan.txt
+
+          - publish: $(tfRoot)/tfplan
+            artifact: tfplan
+            displayName: Publish the plan
+
+          - publish: $(tfRoot)/plan.txt
+            artifact: plan-text
+            displayName: Publish the plan as text (for review)
+
+  - stage: Apply
+    dependsOn: Plan
+    # Only merges to main apply; pull request runs stop after Plan.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: Apply
+        # Approvals and checks on this environment gate the stage.
+        environment: alz-apply
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - download: current
+                  artifact: tfplan
+                  displayName: Download the plan
+
+                - bash: |
+                    set -euo pipefail
+                    curl -sSLo terraform.zip "https://releases.hashicorp.com/terraform/$(tfVersion)/terraform_$(tfVersion)_linux_amd64.zip"
+                    unzip -oq terraform.zip -d "$(Agent.ToolsDirectory)/terraform"
+                    echo "##vso[task.prependpath]$(Agent.ToolsDirectory)/terraform"
+                    printf 'terraform {\n  backend "azurerm" {}\n}\n' > "$(tfRoot)/ci_backend.tf"
+                    cp "$(Pipeline.Workspace)/tfplan/tfplan" "$(tfRoot)/tfplan"
+                  displayName: Install Terraform, add the backend, place the plan
+
+                - task: AzureCLI@2
+                  displayName: Terraform apply (saved plan)
+                  inputs:
+                    azureSubscription: $(serviceConnectionApply)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    workingDirectory: $(tfRoot)
+                    inlineScript: |
+                      set -euo pipefail
+                      export ARM_USE_OIDC=true
+                      export ARM_USE_AZUREAD=true
+                      export ARM_OIDC_TOKEN="$idToken"
+                      export ARM_CLIENT_ID="$servicePrincipalId"
+                      export ARM_TENANT_ID="$tenantId"
+                      export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+
+                      terraform init -input=false \
+                        -backend-config="resource_group_name=$(backendResourceGroup)" \
+                        -backend-config="storage_account_name=$(backendStorageAccount)" \
+                        -backend-config="container_name=$(backendContainer)" \
+                        -backend-config="key=$(backendKey)"
+                      # Refuses a stale plan if the state changed since Plan.
+                      terraform apply -input=false -lock-timeout=10m tfplan

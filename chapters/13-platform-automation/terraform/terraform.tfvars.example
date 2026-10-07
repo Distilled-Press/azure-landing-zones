@@ -1,0 +1,48 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+management_group_id = "alz" # the intermediate root from chapter 6, or a test management group
+
+github_organization = "my-github-org"
+github_repository   = "azure-landing-zones"
+
+prefix   = "alz"
+location = "uksouth"
+
+# The defaults, written out. Plan: Reader, trusted for pull requests and main.
+# Apply: Owner, trusted only for jobs in the "alz-apply" GitHub environment.
+# identities = {
+#   plan = {
+#     role_definition_name = "Reader"
+#     federated_credentials = {
+#       pull-request = { type = "pull_request" }
+#       main-branch  = { type = "branch", value = "main" }
+#     }
+#   }
+#   apply = {
+#     role_definition_name = "Owner"
+#     federated_credentials = {
+#       apply-environment = { type = "environment", value = "alz-apply" }
+#     }
+#   }
+# }
+
+# Azure DevOps: create the workload identity federation service connection
+# first (manual, managed identity), then copy its Issuer and Subject identifier.
+# additional_federated_credentials = {
+#   ado-sc-alz-apply = {
+#     identity_key = "apply"
+#     issuer       = "<issuer shown by the service connection>"
+#     subject      = "<subject identifier shown by the service connection>"
+#   }
+# }
+
+# Reader on subscription_id for sign-in; set false when the subscription is
+# under management_group_id (Reader is then inherited).
+subscription_reader_enabled = true
+
+# Storage account for Terraform state (small monthly cost).
+state_storage_enabled = false
+
+# tags = { environment = "test" }
+# enable_telemetry = false

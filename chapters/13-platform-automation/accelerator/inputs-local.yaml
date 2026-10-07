@@ -1,0 +1,42 @@
+---
+# Azure Landing Zones IaC Accelerator: bootstrap inputs for Terraform with the
+# local file system (no GitHub or Azure DevOps). Based on the accelerator's
+# example (alz-terraform-accelerator
+# templates/platform_landing_zone/examples/bootstrap/inputs-local.yaml).
+# Use this for another version control system, or to look at what the
+# accelerator generates before connecting it to a pipeline.
+
+# Basic inputs (do not change for this scenario)
+iac_type: "terraform"
+bootstrap_module_name: "alz_local"
+starter_module_name: "platform_landing_zone"
+
+## Decision 4: region for the bootstrap resources
+bootstrap_location: "uksouth"
+
+## Decision 6: parent management group (must exist). Empty = Tenant Root Group.
+root_parent_management_group_id: "<test-parent-management-group-id>"
+
+## Decision 7: platform subscriptions
+subscription_ids:
+  management: "00000000-0000-0000-0000-000000000000"
+  identity: "00000000-0000-0000-0000-000000000000"
+  connectivity: "00000000-0000-0000-0000-000000000000"
+  security: "00000000-0000-0000-0000-000000000000"
+
+## Decision 8: bootstrap subscription. Empty = the Azure CLI subscription.
+bootstrap_subscription_id: ""
+
+## Decision 9: naming
+service_name: "alz"
+environment_name: "mgmt"
+postfix_number: 1
+
+# Local-only inputs
+## true: still create the state storage account and the plan/apply identities
+## in Azure (without federated credentials, as there is no pipeline to trust).
+## false: only write the files; bring your own state and identities.
+create_bootstrap_resources_in_azure: true
+
+## Where to write the generated module. Empty = the standard output folder.
+target_directory: ""

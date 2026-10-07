@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars and edit.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+prefix   = "alz"
+location = "uksouth"
+
+# Defender for Cloud email notifications (free).
+security_contact_emails        = ["security-team@example.com"]
+notify_roles                   = ["Owner"]
+alert_minimal_severity         = "Medium"
+attack_path_minimal_risk_level = "Critical"
+
+# PAID Defender plans, subscription-wide. Default: none.
+# Pricing: https://azure.microsoft.com/pricing/details/defender-for-cloud/
+defender_plans = {}
+# defender_plans = {
+#   VirtualMachines = { subplan = "P1" }                   # Defender for Servers Plan 1
+#   StorageAccounts = { subplan = "DefenderForStorageV2" } # Defender for Storage
+#   KeyVaults       = {}                                   # Defender for Key Vault
+# }
+
+# Microsoft Sentinel on a new Log Analytics workspace. BILLABLE once data flows.
+deploy_sentinel        = false
+log_retention_days     = 30
+connect_azure_activity = true

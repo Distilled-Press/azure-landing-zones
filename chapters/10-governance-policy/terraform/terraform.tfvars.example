@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars and edit. Every input has a default.
+
+prefix = "alz"
+
+# Management group ID (not resource ID) to create <prefix>-policytest under.
+# null = tenant root group. To test under chapter 6's hierarchy: "alz".
+parent_management_group_id = null
+
+location = "uksouth"
+
+# DoNotEnforce: report only. Default: enforce (Deny blocks, Modify changes tags).
+enforcement_mode = "DoNotEnforce"
+
+required_tag_name = "costCentre"
+guardrail_effect  = "Audit" # or "Deny"
+allowed_locations = ["uksouth", "ukwest"]
+
+# null = 30 days after the first apply. Or a fixed UTC time:
+# exemption_expires_on = "2026-12-31T23:59:59Z"
+exemption_expires_on = null
+
+create_remediation_task = false

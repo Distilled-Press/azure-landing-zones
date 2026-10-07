@@ -1,0 +1,33 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+
+subscription_id = "00000000-0000-0000-0000-000000000000" # connectivity subscription (chapter 8's hub)
+prefix          = "alz"
+location        = "uksouth" # same region as the hub VNet
+
+# Chapter 8's output hub_virtual_network_id:
+hub_virtual_network_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alz-hub-uksouth/providers/Microsoft.Network/virtualNetworks/vnet-alz-hub-uksouth"
+
+# --- (a) Private DNS zones (always created; defaults shown) ---
+# private_dns_zones = {
+#   azure_storage_blob = "privatelink.blob.core.windows.net"
+#   azure_key_vault    = "privatelink.vaultcore.azure.net"
+#   azure_sql_server   = "privatelink.database.windows.net"
+# }
+
+# --- (b) DNS Private Resolver: billed per endpoint per hour. ---
+deploy_dns_resolver    = false
+dns_inbound_ip_address = "10.10.0.164"
+onprem_domain_name     = "corp.example.com."
+onprem_dns_servers     = ["10.0.0.4"]
+
+# --- (c) Virtual WAN: the hub is billed per hour; the secured hub adds Azure Firewall. ---
+deploy_virtual_wan            = false
+virtual_hub_address_prefix    = "10.20.0.0/22"
+deploy_secured_hub            = false
+virtual_hub_firewall_sku_tier = "Standard"
+deploy_routing_intent         = false
+
+tags = {
+  environment = "test"
+  managedBy   = "terraform"
+}
