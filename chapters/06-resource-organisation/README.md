@@ -27,7 +27,7 @@ No subscriptions are moved into the hierarchy. Subscription placement is chapter
 | `terraform/` | The hierarchy plus the **full** ALZ policy set from the library: 149 custom policy definitions, 43 custom initiatives and 5 custom role definitions on the intermediate root, 123 policy assignments across the archetypes, and the role assignments their managed identities need. |
 | `bicep/` | The same hierarchy plus a **subset** of the ALZ policies (12 assignments, 3 custom definitions, 2 custom initiatives), copied unchanged from the same library release. See [Bicep and the full policy set](#bicep-and-the-full-policy-set). |
 
-Tested: not yet
+Tested: 7 October 2026 (Terraform 1.13.4): Terraform apply (533 resources, enforcement DoNotEnforce) and destroy in a test tenant. Bicep: not yet.
 
 ## Prerequisites
 

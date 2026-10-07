@@ -5,7 +5,7 @@ Companion code for the "Build it" section of chapter 5: the platform RBAC model 
 - `terraform/`: Terraform version (`azurerm` resources)
 - `bicep/`: Bicep version (Azure Verified Modules)
 
-Tested: not yet
+Tested: 7 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply and destroy, Bicep deployment and the clean-up commands, in a test tenant. PIM-eligible assignments not tested (they need Microsoft Entra ID P2 or ID Governance).
 
 ## What it builds
 
@@ -133,6 +133,12 @@ az rest --method put \
   --body "{\"properties\":{\"principalId\":\"<platform-team-object-id>\",\"roleDefinitionId\":\"$MG/alz-landingzones/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c\",\"requestType\":\"AdminRemove\"}}"
 
 # 3. Custom role definitions
+# Role assignments take a minute or so to disappear everywhere. If a role definition
+# is deleted too soon the command can report success and leave it in place, so
+# wait, delete, then check with:
+#   az role definition list --custom-role-only true --scope $MG/alz --query "[].roleName" -o tsv
+# (and delete any survivor by its ID: az role definition delete --name <guid> --scope $MG/alz)
+sleep 60
 az role definition delete --name "Landing Zone Application Owner (alz)" --scope $MG/alz --custom-role-only true
 az role definition delete --name "Network Management (alz)"             --scope $MG/alz --custom-role-only true
 

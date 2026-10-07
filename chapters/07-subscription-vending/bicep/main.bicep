@@ -111,7 +111,7 @@ var resourceProviders = registerResourceProviders
 // ---------- The vending module ----------
 
 module subVending 'br/public:avm/ptn/lz/sub-vending:0.8.0' = {
-  name: take('vend-${name}', 64)
+  name: take('subvending-${name}', 64)
   params: {
     enableTelemetry: enableTelemetry
 

@@ -10,7 +10,7 @@ terraform/                            Terraform root module (Azure/avm-ptn-alz-s
 bicep/                                Bicep template + one .bicepparam per request (avm/ptn/lz/sub-vending)
 ```
 
-Tested: not yet
+Tested: 7 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): existing-subscription mode, Terraform apply and destroy, Bicep deployment, and every clean-up command, in a test tenant. Alias mode not applied (it creates a real subscription).
 
 ## What it builds
 
@@ -95,8 +95,13 @@ SUB=00000000-0000-0000-0000-000000000000          # the subscription you used
 az account management-group subscription add --name <original-parent-mg-id> --subscription $SUB
 # Delete Network Watcher's resource group if it didn't exist before
 az group delete --subscription $SUB --name NetworkWatcherRG --yes
-# Rename the subscription back and remove the tags in the portal
-# (Subscriptions > the subscription > Overview / Tags)
+# Rename the subscription back (the command group is marked experimental)
+az account subscription rename --id $SUB --name "<original display name>"
+# Remove the request's tags. If the subscription had no tags before, delete them all:
+az tag delete --resource-id /subscriptions/$SUB --yes
+# otherwise remove only the keys the request added:
+# az tag update --resource-id /subscriptions/$SUB --operation Delete \
+#   --tags workload= environment= owner= costCentre= criticality= managedBy= requestId=
 ```
 
 ## Deploy and destroy: Bicep
@@ -146,8 +151,11 @@ az group delete --subscription $SUB --name rsg-uksouth-ds --yes
 # 6. Move the subscription back to its original management group
 az account management-group subscription add --name <original-parent-mg-id> --subscription $SUB
 
-# 7. Remove the tags in the portal. The Bicep module merges its tags with the
-#    existing ones, so delete only the request's keys plus managedBy and requestId.
+# 7. Remove the tags. The Bicep module merges its tags with the existing ones,
+#    so delete only the request's keys plus managedBy and requestId:
+az tag update --resource-id /subscriptions/$SUB --operation Delete \
+  --tags workload= environment= owner= costCentre= criticality= managedBy= requestId=
+#    (if the subscription had no tags before: az tag delete --resource-id /subscriptions/$SUB --yes)
 ```
 
 In alias mode, also cancel the new subscription (portal: Subscriptions > the subscription > Cancel). Billing stops on cancellation; you can delete the subscription after a waiting period, and Azure deletes it automatically 90 days after cancellation.

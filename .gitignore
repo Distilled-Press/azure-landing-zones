@@ -14,3 +14,4 @@ terraform.tfvars
 # Local
 .env
 .DS_Store
+tfplan

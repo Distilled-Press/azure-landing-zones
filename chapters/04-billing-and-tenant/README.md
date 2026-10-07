@@ -7,7 +7,7 @@ Companion code for the "Build it" section of chapter 4: create a subscription pr
 
 > **Creating a subscription is not free to undo instantly.** You can cancel a subscription straight away, but you can't delete it until a waiting period has passed (3 days for customer-led subscriptions, 7 days for field-led and partner subscriptions), and Azure deletes a cancelled subscription automatically only after 90 days. Treat the deploy test as **plan / what-if only** unless you intend to keep the subscription.
 
-Tested: not yet
+Tested: 7 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): `terraform plan` and Bicep what-if against a Microsoft Customer Agreement invoice section. Not applied, because applying creates a real subscription.
 
 ## What it builds
 
