@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*.auto.tfvars
+terraform.tfvars
+# Bicep / ARM build output
+*.json.bak
+# Local
+.env
+.DS_Store
