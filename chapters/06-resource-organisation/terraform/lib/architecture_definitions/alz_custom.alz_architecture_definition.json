@@ -1,0 +1,114 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Azure/Azure-Landing-Zones-Library/main/schemas/architecture_definition.json",
+  "name": "alz_custom",
+  "management_groups": [
+    {
+      "id": "alz",
+      "display_name": "Azure Landing Zones",
+      "archetypes": [
+        "root"
+      ],
+      "exists": false,
+      "parent_id": null
+    },
+    {
+      "id": "alz-platform",
+      "display_name": "Platform",
+      "archetypes": [
+        "platform"
+      ],
+      "exists": false,
+      "parent_id": "alz"
+    },
+    {
+      "id": "alz-security",
+      "display_name": "Security",
+      "archetypes": [
+        "security"
+      ],
+      "exists": false,
+      "parent_id": "alz-platform"
+    },
+    {
+      "id": "alz-management",
+      "display_name": "Management",
+      "archetypes": [
+        "management"
+      ],
+      "exists": false,
+      "parent_id": "alz-platform"
+    },
+    {
+      "id": "alz-identity",
+      "display_name": "Identity",
+      "archetypes": [
+        "identity"
+      ],
+      "exists": false,
+      "parent_id": "alz-platform"
+    },
+    {
+      "id": "alz-connectivity",
+      "display_name": "Connectivity",
+      "archetypes": [
+        "connectivity"
+      ],
+      "exists": false,
+      "parent_id": "alz-platform"
+    },
+    {
+      "id": "alz-landingzones",
+      "display_name": "Landing zones",
+      "archetypes": [
+        "landing_zones"
+      ],
+      "exists": false,
+      "parent_id": "alz"
+    },
+    {
+      "id": "alz-corp",
+      "display_name": "Corp",
+      "archetypes": [
+        "corp"
+      ],
+      "exists": false,
+      "parent_id": "alz-landingzones"
+    },
+    {
+      "id": "alz-online",
+      "display_name": "Online",
+      "archetypes": [
+        "online"
+      ],
+      "exists": false,
+      "parent_id": "alz-landingzones"
+    },
+    {
+      "id": "alz-local",
+      "display_name": "Local",
+      "archetypes": [
+        "local"
+      ],
+      "exists": false,
+      "parent_id": "alz-landingzones"
+    },
+    {
+      "id": "alz-sandbox",
+      "display_name": "Sandbox",
+      "archetypes": [
+        "sandbox"
+      ],
+      "exists": false,
+      "parent_id": "alz"
+    },
+    {
+      "id": "alz-decommissioned",
+      "display_name": "Decommissioned",
+      "archetypes": [
+        "decommissioned"
+      ],
+      "exists": false,
+      "parent_id": "alz"
+    }
+  ]
+}

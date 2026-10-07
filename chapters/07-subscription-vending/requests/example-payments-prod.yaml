@@ -1,0 +1,64 @@
+# Subscription request: one file per workload subscription.
+#
+# The workload team fills this in (usually through a form that opens a pull
+# request); the platform team reviews and merges it, and the pipeline runs the
+# vending code against it. Both the Terraform and the Bicep versions read this
+# file. All values below are placeholders.
+
+workload: payments              # short workload name, lower case, used in resource names
+environment: prod               # prod | test | dev (free text, used in names and tags)
+location: uksouth               # region for the spoke virtual network and its resource group
+
+owner_email: payments-owner@example.com
+
+# ID (not display name) of an existing management group. The subscription is
+# placed under it. `alz-corp` is the Corp landing zone group in the chapter 6
+# hierarchy (IDs there are `<prefix>-corp`, `<prefix>-online` and so on).
+management_group_id: alz-corp
+
+# Only used when the platform creates a NEW subscription (alias mode).
+# Production or DevTest (case sensitive).
+subscription_workload_type: Production
+
+budget:
+  amount: 500                   # whole currency units per month, in the billing currency
+  threshold_type: Actual        # Actual or Forecasted
+  thresholds: [80, 100]         # percentages of the amount that trigger an email
+  contact_emails:
+    - payments-owner@example.com
+    - finops@example.com
+
+tags:
+  workload: payments
+  environment: prod
+  owner: payments-owner@example.com
+  costCentre: CC-0000
+  criticality: high
+
+network:
+  address_space:
+    - 10.100.0.0/24             # must not overlap the hub or any other spoke (check your IPAM)
+  subnets:
+    - name: snet-app
+      address_prefix: 10.100.0.0/26
+    - name: snet-data
+      address_prefix: 10.100.0.64/26
+
+# Entra ID object IDs (users, groups or service principals) and the role each
+# gets at subscription scope. `role` is a built-in role name or a role
+# definition GUID. Groups are better than users.
+role_assignments:
+  - principal_id: 00000000-0000-0000-0000-000000000000
+    principal_type: Group
+    role: Contributor
+  - principal_id: 11111111-1111-1111-1111-111111111111
+    principal_type: Group
+    role: Reader
+
+# Resource providers to register in the subscription.
+resource_providers:
+  - Microsoft.Compute
+  - Microsoft.KeyVault
+  - Microsoft.Network
+  - Microsoft.Storage
+  - Microsoft.Web

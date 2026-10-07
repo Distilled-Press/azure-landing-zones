@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars (ignored by git) and replace the placeholders.
+# Find a group's object ID with: az ad group show --group "<display name>" --query id -o tsv
+
+prefix = "alz"
+
+intermediate_root_management_group_id = "alz"
+platform_management_group_id          = "alz-platform"
+landing_zones_management_group_id     = "alz-landingzones"
+workload_management_group_id          = "alz-corp"
+
+platform_team_group_object_id = "00000000-0000-0000-0000-000000000001"
+workload_team_group_object_id = "00000000-0000-0000-0000-000000000002"
+security_ops_group_object_id  = "00000000-0000-0000-0000-000000000003"
+network_ops_group_object_id   = "00000000-0000-0000-0000-000000000004" # or null to skip
+
+# Needs Microsoft Entra ID P2 or ID Governance.
+enable_pim_eligible_assignments = false
+pim_eligibility_duration_days   = 365

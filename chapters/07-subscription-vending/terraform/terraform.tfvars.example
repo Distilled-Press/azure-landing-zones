@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+
+request_file = "../requests/example-payments-prod.yaml"
+prefix       = "alz"
+
+# --- Mode A (default): configure an EXISTING subscription ---
+subscription_alias_enabled   = false
+existing_subscription_id     = "00000000-0000-0000-0000-000000000000"
+existing_subscription_update = true # tag and rename the subscription
+
+# --- Mode B: create a NEW subscription (needs billing rights; destroy CANCELS it) ---
+# subscription_alias_enabled = true
+# billing_scope              = "/providers/Microsoft.Billing/billingAccounts/00000000-0000-0000-0000-000000000000:00000000-0000-0000-0000-000000000000_2019-05-31/billingProfiles/XXXX-XXXX-XXX-XXX/invoiceSections/XXXX-XXXX-XXX-XXX"
+
+# --- Optional hub peering (chapter 8) ---
+# hub_peering_enabled     = true
+# hub_virtual_network_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alz-hub-uksouth/providers/Microsoft.Network/virtualNetworks/vnet-alz-hub-uksouth"
+# hub_use_remote_gateways = false

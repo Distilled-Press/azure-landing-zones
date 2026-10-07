@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Azure/Azure-Landing-Zones-Library/main/schemas/library_metadata.json",
+  "name": "chapter06",
+  "display_name": "Chapter 6 - ALZ hierarchy with a prefix",
+  "description": "Adds a prefixed management group architecture on top of the Azure landing zones library. The archetypes, policy definitions and assignments come unchanged from the dependency below.",
+  "dependencies": [
+    {
+      "path": "platform/alz",
+      "ref": "2026.10.0"
+    }
+  ]
+}

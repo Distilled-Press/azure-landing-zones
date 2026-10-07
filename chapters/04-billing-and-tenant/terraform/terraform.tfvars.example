@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (ignored by git) and replace the placeholders.
+billing_scope_id          = "/providers/Microsoft.Billing/billingAccounts/00000000-0000-0000-0000-000000000000:00000000-0000-0000-0000-000000000000_2019-05-31/billingProfiles/AAAA-AAAA-AAA-AAA/invoiceSections/BBBB-BBBB-BBB-BBB"
+subscription_alias_name   = "alz-sub-test-001"
+subscription_display_name = "alz-sub-test-001"
+subscription_workload     = "DevTest"
+management_group_id       = null # for example "alz-corp" once chapter 6 has built the hierarchy
+
+subscription_tags = {
+  environment = "test"
+  owner       = "platform-team"
+}
+
+cancel_subscription_on_destroy = true

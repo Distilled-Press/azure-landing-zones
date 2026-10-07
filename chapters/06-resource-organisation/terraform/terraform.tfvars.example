@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars (git-ignored) and adjust. Every value is optional.
+
+prefix   = "alz"
+location = "uksouth"
+
+# Leave null for the tenant root group, or name an existing management group.
+# parent_management_group_id = "my-parent-mg"
+
+# Test deployment: report compliance only. Use "Default" for a real platform.
+policy_assignment_enforcement_mode = "DoNotEnforce"
+
+# Real deployments point the ALZ policies at the platform's own resources.
+# These are created in chapter 12 (management) and chapter 8 (connectivity);
+# the placeholders below show the shape. Anything you leave out keeps the
+# library's placeholder value in subscription 00000000-0000-0000-0000-000000000000.
+# policy_default_values = {
+#   log_analytics_workspace_id              = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alz-management-uksouth/providers/Microsoft.OperationalInsights/workspaces/law-alz-uksouth"
+#   ama_user_assigned_managed_identity_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alz-management-uksouth/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uami-alz-ama"
+#   ama_user_assigned_managed_identity_name = "uami-alz-ama"
+#   ama_vm_insights_data_collection_rule_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alz-management-uksouth/providers/Microsoft.Insights/dataCollectionRules/dcr-vm-insights"
+#   email_security_contact                  = "security@example.com"
+#   private_dns_zone_subscription_id        = "00000000-0000-0000-0000-000000000000"
+#   private_dns_zone_resource_group_name    = "rg-alz-dns-uksouth"
+#   private_dns_zone_region                 = "uksouth"
+# }
+
+# enable_telemetry = false
