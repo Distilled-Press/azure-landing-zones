@@ -1,0 +1,179 @@
+# Scheduled drift check for chapter 15's Terraform (the adopted brownfield
+# resources). Copy to .github/workflows/drift-terraform.yml in the repository
+# that holds the code and its state.
+#
+# It runs terraform plan -detailed-exitcode on a schedule with the read-only
+# identity from chapter 13 (OIDC, no secrets):
+#   exit 0 -> no drift: closes an open drift issue, if there is one
+#   exit 1 -> the plan failed: the run fails (and GitHub notifies you)
+#   exit 2 -> drift: opens an issue with the plan, or comments on the open one
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables):
+#   AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_CLIENT_ID_PLAN
+#   BACKEND_RESOURCE_GROUP, BACKEND_STORAGE_ACCOUNT, BACKEND_CONTAINER
+#   BROWNFIELD_SUBSCRIPTION_ID (optional: the subscription the resources are in,
+#   if it isn't AZURE_SUBSCRIPTION_ID)
+# Scheduled runs use the default branch, so the token subject is
+# repo:<org>/<repo>:ref:refs/heads/main: chapter 13's plan identity trusts it.
+
+name: drift-terraform
+
+on:
+  schedule:
+    - cron: "17 6 * * 1-5" # 06:17 UTC, Monday to Friday
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: drift-terraform
+  cancel-in-progress: false
+
+env:
+  TF_ROOT: chapters/15-brownfield-day-two/terraform
+  TF_VERSION: 1.13.4
+  TF_IN_AUTOMATION: "true"
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true" # backend: Entra ID auth to the blob, no account keys
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.BROWNFIELD_SUBSCRIPTION_ID || vars.AZURE_SUBSCRIPTION_ID }}
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+  TF_VAR_subscription_id: ${{ vars.BROWNFIELD_SUBSCRIPTION_ID || vars.AZURE_SUBSCRIPTION_ID }}
+  ISSUE_TITLE: "Drift detected: chapters/15-brownfield-day-two/terraform"
+
+jobs:
+  drift:
+    name: Terraform drift check
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC token for Azure
+      contents: read
+      issues: write # open, comment on and close the drift issue
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Azure login (OIDC, plan identity)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.BROWNFIELD_SUBSCRIPTION_ID || vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false # keep Terraform's own exit code
+
+      - name: Add the azurerm backend
+        run: printf 'terraform {\n  backend "azurerm" {}\n}\n' > ci_backend.tf
+
+      - name: Terraform init
+        run: >
+          terraform init -input=false
+          -backend-config="resource_group_name=${{ vars.BACKEND_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.BACKEND_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}"
+          -backend-config="key=ch15-brownfield.tfstate"
+
+      # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes (drift).
+      # The plan refreshes state in memory only; nothing is written.
+      - name: Terraform plan (detect drift)
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -no-color -lock-timeout=10m -detailed-exitcode -out=tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 1 ]; then
+            echo "::error::terraform plan failed"
+            exit 1
+          fi
+          if [ "$code" -eq 2 ]; then
+            echo "::warning::Drift detected"
+          fi
+
+      - name: Upload the plan
+        if: steps.plan.outputs.exitcode == '2'
+        uses: actions/upload-artifact@v7
+        with:
+          name: drift-plan
+          path: ${{ env.TF_ROOT }}/plan.txt
+          retention-days: 30
+
+      - name: Open, update or close the drift issue
+        uses: actions/github-script@v9
+        env:
+          EXIT_CODE: ${{ steps.plan.outputs.exitcode }}
+          PLAN_FILE: ${{ env.TF_ROOT }}/plan.txt
+        with:
+          script: |
+            const fs = require('fs');
+            const title = process.env.ISSUE_TITLE;
+            const drift = process.env.EXIT_CODE === '2';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // Find the open drift issue by its exact title.
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find(i => !i.pull_request && i.title === title);
+
+            if (!drift) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number,
+                  body: `No drift any more (plan exit code 0). Closing. Run: ${runUrl}`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number,
+                  state: 'closed', state_reason: 'completed',
+                });
+              }
+              core.info('No drift.');
+              return;
+            }
+
+            let plan = fs.readFileSync(process.env.PLAN_FILE, 'utf8');
+            const max = 60000; // an issue body or comment holds 65,536 characters
+            if (plan.length > max) {
+              plan = plan.substring(plan.length - max);
+              plan = '... (start of plan cut; the full plan is in the drift-plan artifact)\n' + plan;
+            }
+            const summary = (plan.match(/^Plan: .*$/m) || ['(see plan)'])[0];
+            const body = [
+              `Scheduled \`terraform plan\` found differences between the code and Azure: \`${summary}\``,
+              '',
+              'Either the change made outside Terraform is wanted (put it in the code and open a pull request),',
+              'or it is not (run the platform pipeline\'s apply to put Azure back to the code).',
+              '',
+              '<details><summary>Plan</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '</details>',
+              '',
+              `Run: ${runUrl}`,
+            ].join('\n');
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body,
+              });
+              core.warning(`Drift: commented on issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo, title, body,
+              });
+              core.warning(`Drift: opened issue #${created.data.number}`);
+            }

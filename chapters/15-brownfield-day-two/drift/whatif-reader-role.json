@@ -1,0 +1,15 @@
+{
+  "Name": "Deployment What-If Reader",
+  "IsCustom": true,
+  "Description": "Read everything and run deployment what-if (drift checks). Can't create or change resources: a deployment it submitted would fail on the first resource write.",
+  "Actions": [
+    "*/read",
+    "Microsoft.Resources/deployments/*"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/00000000-0000-0000-0000-000000000000"
+  ]
+}

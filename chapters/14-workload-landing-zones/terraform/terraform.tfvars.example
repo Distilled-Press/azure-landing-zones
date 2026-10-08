@@ -1,0 +1,37 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+
+subscription_id = "00000000-0000-0000-0000-000000000000" # workload landing zone subscription
+prefix          = "alz"
+workload_name   = "data"
+location        = "uksouth"
+
+# --- Address plan (defaults shown) ---
+# address_space = "10.12.0.0/22"
+# subnet_prefixes = {
+#   host              = "10.12.0.0/24"
+#   container         = "10.12.1.0/24"
+#   private_endpoints = "10.12.2.0/27"
+# }
+
+# --- Peering to the chapter 8 hub (free) ---
+hub_peering_enabled = false
+# hub_virtual_network_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-alz-hub-uksouth/providers/Microsoft.Network/virtualNetworks/vnet-alz-hub-uksouth"
+
+# --- Databricks, NAT gateway, private endpoints and lake: billed. ---
+# Read the README's destroy steps before you turn this on.
+deploy_databricks                       = false
+nat_gateway_enabled                     = true
+private_endpoints_enabled               = true
+workspace_public_network_access_enabled = true
+
+# Central private DNS zones from chapter 9 (leave out to create zones here):
+# private_dns_zone_ids = {
+#   databricks = "/subscriptions/.../resourceGroups/rg-alz-dns-uksouth/providers/Microsoft.Network/privateDnsZones/privatelink.azuredatabricks.net"
+#   blob       = "/subscriptions/.../privateDnsZones/privatelink.blob.core.windows.net"
+#   dfs        = "/subscriptions/.../privateDnsZones/privatelink.dfs.core.windows.net"
+# }
+
+tags = {
+  environment = "test"
+  managedBy   = "terraform"
+}
