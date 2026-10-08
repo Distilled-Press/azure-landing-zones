@@ -67,7 +67,7 @@ Destroy:
 terraform destroy
 ```
 
-This removes the Activity log diagnostic setting, the Sentinel onboarding, the workspace (permanently: `permanently_delete_on_destroy = true` skips the 14-day soft delete so the name can be reused), the resource group and the security contact, and **sets every plan in `defender_plans` back to Free**. The Activity log diagnostic setting is the slow part: in testing its delete took over 11 minutes, because the provider waits until the subscription's list of diagnostic settings stops showing it, which lags behind the delete itself. Afterwards the subscription is back to Defender for Cloud's defaults: foundational CSPM only, and with no security contact, Defender for Cloud's default of emailing subscription owners about high-severity alerts and attack paths.
+This removes the Activity log diagnostic setting, the Sentinel onboarding, the workspace (permanently: `permanently_delete_on_destroy = true` skips the 14-day soft delete so the name can be reused), the resource group and the security contact, and **sets every plan in `defender_plans` back to Free**. The Activity log diagnostic setting is the slow part: its delete can take over 11 minutes, because the provider waits until the subscription's list of diagnostic settings stops showing it, which lags behind the delete itself. Afterwards the subscription is back to Defender for Cloud's defaults: foundational CSPM only, and with no security contact, Defender for Cloud's default of emailing subscription owners about high-severity alerts and attack paths.
 
 ## Deploy and destroy: Bicep
 

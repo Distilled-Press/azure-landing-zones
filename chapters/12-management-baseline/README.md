@@ -23,7 +23,7 @@ Names start with the `prefix` input (default `alz`) and end with the region wher
 | `bicep/main.bicep` | Everything above except AMBA (subscription deployment). |
 | `bicep/amba.bicep` | Opt-in, separate management group deployment: all AMBA definitions and initiatives from the AMBA release 2026-06-03 templates, and a **subset** of two assignments (Resource and Service Health, Notification Assets). See [AMBA in Bicep](#amba-in-bicep). |
 
-Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply and destroy of the baseline; Bicep deployment of `main.bicep` and the clean-up commands, in a test tenant. **AMBA failed in both versions** (see [Known issue: AMBA initiatives rejected](#known-issue-amba-initiatives-rejected)): the Terraform apply created the 143 definitions, 12 of 16 initiatives and the AMBA identity, then stopped; `amba.bicep` created the definitions and stopped at the initiatives. No AMBA assignment was created, so assignments, their role assignments and enforcement mode weren't verified. Both were destroyed with the commands below.
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply and destroy of the baseline; Bicep deployment of `main.bicep` and the clean-up commands, in a test tenant. **The AMBA opt-in doesn't complete with the current AMBA release** in either version (see [Known issue: AMBA initiatives rejected](#known-issue-amba-initiatives-rejected)), so AMBA's assignments, their role assignments and enforcement mode are unverified.
 
 The baseline is testable on its own: it needs a subscription, not chapter 6's hierarchy. Its outputs are the IDs chapter 6's `policy_default_values` asks for (see [Feeding chapter 6](#feeding-chapter-6)).
 
@@ -76,7 +76,7 @@ The management group must already exist. As in chapter 6, its ID is written in `
 
 ### Known issue: AMBA initiatives rejected
 
-In the test on 8 October 2026, Azure rejected four AMBA initiatives from library platform/amba 2026.06.2 (`Alerting-VM`, `Alerting-VMSS`, `Alerting-HybridVM`, `Alerting-ResourceAndServiceHealth`) with `PolicySetParameterAllowedValuesMismatch`: some initiative parameters allow values the policy definitions don't (for example `PT1M` for `evaluationFrequency`, `P1D` for `windowSize`, and `deployIfNotExists`/`disabled` in lower case for the built-in Service Health policy's `effect`). The apply stops before any assignment is created. Earlier library releases (2026.06.1, 2026.06.0, 2026.01.1) contain the same mismatches, and AMBA's own ARM templates (release 2026-06-03, used by `amba.bicep`) fail the same way, plus a fifth initiative, `Alerting-LandingZone`. Replacing the four initiatives through a local library with `library_overwrite_enabled = true` didn't work with ALZ provider 0.22.0: the library's own copies were still used. Until AMBA publishes a fixed release, `deploy_amba = true` and `amba.bicep` don't complete; destroy what the failed run created (below).
+With the current releases (library platform/amba 2026.06.2, AMBA templates 2026-06-03), Azure rejects four AMBA initiatives (`Alerting-VM`, `Alerting-VMSS`, `Alerting-HybridVM`, `Alerting-ResourceAndServiceHealth`; `amba.bicep` also `Alerting-LandingZone`) with `PolicySetParameterAllowedValuesMismatch`: some initiative parameters allow values the policy definitions don't (for example `PT1M` for `evaluationFrequency`, `P1D` for `windowSize`, and `deployIfNotExists`/`disabled` in lower case for the built-in Service Health policy's `effect`). The apply stops before any assignment is created; destroy what it created (below). The baseline is unaffected, and AMBA stays opt-in (`deploy_amba = false` and a separate `amba.bicep`). This code is to be re-tested with AMBA's next release.
 
 The first plan with AMBA on is slower: the ALZ provider downloads the library into `.alzlib/` (git-ignored) and reads built-in policy definitions from Azure. A plan in the test tenant showed 244 resources to add: 19 for the baseline and 225 for AMBA.
 
@@ -89,6 +89,8 @@ terraform destroy          # with the same -var flags you applied with
 ```
 
 This deletes everything Terraform created, including the AMBA definitions, initiatives, assignments, role assignments, identity and its resource group. The workspace is deleted **permanently** (the provider feature `permanently_delete_on_destroy` is set in `terraform.tf`), so the name can be reused at once instead of waiting out the 14-day soft-delete.
+
+If destroy stops with a transient error (for example on the activity log alert), run it again; it removes what is left.
 
 What it can't delete is anything AMBA's policies deployed themselves. In the default `DoNotEnforce` mode, without remediation tasks, there is none. If you switched to `Default` or ran remediation, AMBA's documentation says to run its clean-up script after `terraform destroy`: `Start-AMBA-ALZ-Maintenance.ps1 -pseudoRootManagementGroup <mg> -cleanItems Amba-Alz`, from `patterns/alz/scripts` in the AMBA repository (PowerShell 7 with Az.Accounts, Az.Resources, Az.ResourceGraph and Az.ManagedServiceIdentity; try `-WhatIf` first). It finds AMBA's resources by the `_deployed_by_amba` tag or metadata.
 

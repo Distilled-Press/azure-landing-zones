@@ -51,13 +51,13 @@ terraform apply tfplan
 
 To test under chapter 6's hierarchy instead of the tenant root group, set `parent_management_group_id = "alz"`.
 
+If the first apply stops with a transient error such as `CheckAccessPrincipalTokenInvalid` on the exemption or a reset connection on the role assignment, run `terraform apply` again (without the saved plan); it creates only what is missing.
+
 Destroy:
 
 ```bash
 terraform destroy
 ```
-
-If the first apply stops with a transient error such as `CheckAccessPrincipalTokenInvalid` on the exemption or a reset connection on the role assignment, run `terraform apply` again (without the saved plan); it creates only what is missing.
 
 This removes, in dependency order: the remediation task (if created), the role assignment, the exemption, both assignments, the initiative, the definition and finally the management group. If the management group delete fails because Azure still reports a child for a few seconds, run `terraform destroy` again.
 
@@ -76,7 +76,7 @@ az deployment mg what-if --management-group-id alz-policytest --location uksouth
 az deployment mg create  --management-group-id alz-policytest --location uksouth --name ch10-policy --parameters main.bicepparam
 ```
 
-`--location` is where the deployment record is stored and the default for the policy identity's region. If the first deployment fails because the new management group or definitions aren't visible yet ("out of scope", "not found"), wait a few minutes and run the same `create` again; it is idempotent. If a re-run then fails on the Modify assignment's role assignment with `RoleAssignmentUpdateNotPermitted`, the assignment got a new managed identity in between (it happened once in testing, straight after a failed first run) and the AVM module's role assignment name doesn't change with the principal: delete the Contributor role assignment whose principal no longer matches `az policy assignment show --name alz-inherit-tag --scope /providers/Microsoft.Management/managementGroups/alz-policytest --query identity.principalId` (list them with `az role assignment list --scope /providers/Microsoft.Management/managementGroups/alz-policytest`) and run `create` again.
+`--location` is where the deployment record is stored and the default for the policy identity's region. If the first deployment fails because the new management group or definitions aren't visible yet ("out of scope", "not found"), wait a few minutes and run the same `create` again; it is idempotent. If a re-run then fails on the Modify assignment's role assignment with `RoleAssignmentUpdateNotPermitted`, the assignment got a new managed identity in between (this can happen straight after a failed first run) and the AVM module's role assignment name doesn't change with the principal: delete the Contributor role assignment whose principal no longer matches `az policy assignment show --name alz-inherit-tag --scope /providers/Microsoft.Management/managementGroups/alz-policytest --query identity.principalId` (list them with `az role assignment list --scope /providers/Microsoft.Management/managementGroups/alz-policytest`) and run `create` again.
 
 **`exemptionExpiresOn` defaults to 30 days after the deployment runs, so every redeployment with the default moves the expiry.** Set it in `main.bicepparam` for a fixed date.
 

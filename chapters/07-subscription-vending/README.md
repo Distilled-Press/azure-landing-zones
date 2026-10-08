@@ -29,7 +29,7 @@ From one request file:
 
 ### The two subscription modes
 
-- **Existing subscription (default).** You already have a subscription, perhaps created by hand, by chapter 4's code or by a partner. The code configures it: management group, tags, budget, network, roles, providers. This is the mode the deploy test uses, and the right one when you have no Enterprise Agreement, Microsoft Customer Agreement or Microsoft Partner Agreement: Microsoft's guidance is that without a commercial agreement you create the subscription manually but can still automate everything else.
+- **Existing subscription (default).** You already have a subscription, perhaps created by hand, by chapter 4's code or by a partner. The code configures it: management group, tags, budget, network, roles, providers. This is the tested mode, and the right one when you have no Enterprise Agreement, Microsoft Customer Agreement or Microsoft Partner Agreement: Microsoft's guidance is that without a commercial agreement you create the subscription manually but can still automate everything else.
 - **New subscription (alias mode).** The code creates the subscription with a `Microsoft.Subscription/aliases` resource against a billing scope, then configures it. You need a billing role that can create subscriptions on that scope. For an MCA that's owner, contributor or Azure subscription creator on the invoice section (owner or contributor also works on the billing profile or billing account); chapter 4 covers EA and MPA. **In Terraform, `terraform destroy` in alias mode cancels the subscription.**
 
 ## Prerequisites
