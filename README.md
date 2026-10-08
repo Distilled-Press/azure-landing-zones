@@ -9,15 +9,15 @@ Each chapter's "Build it" section has a folder here with a Terraform version and
 ```
 chapters/
   04-billing-and-tenant/        subscription aliases against a billing scope
-  05-identity-and-access/       custom roles and PIM-eligible assignments
-  06-resource-organisation/     management group hierarchy and archetypes
+  05-identity-and-access/       custom roles, platform role assignments, optional PIM
+  06-resource-organisation/     management group hierarchy and ALZ archetype policies
   07-subscription-vending/      request file to subscription, spoke, budget and RBAC
-  08-hub-spoke/                 two-region hub-spoke connectivity
-  09-virtual-wan-hybrid-dns/    Virtual WAN variant and private DNS policy
-  10-governance-policy/         archetype overrides, exemptions, policy tests
-  11-security-baseline/         Defender for Cloud plans and Sentinel
-  12-management-baseline/       Azure Monitor baseline alerts and action groups
-  13-platform-automation/       the ALZ IaC accelerator, customised
+  08-hub-spoke/                 hub and spoke VNets, Azure Firewall, optional VPN gateway
+  09-virtual-wan-hybrid-dns/    private DNS zones, DNS Private Resolver, Virtual WAN variant
+  10-governance-policy/         policy as code: definition, initiative, Modify, exemption
+  11-security-baseline/         Defender for Cloud contacts and plans, optional Sentinel
+  12-management-baseline/       Log Analytics, action group, Service Health, AMBA (opt-in)
+  13-platform-automation/       pipeline identities (OIDC), pipelines, accelerator inputs
   14-workload-landing-zones/    a data workload landing zone
   15-brownfield-day-two/        importing existing resources, drift checks
 ```
