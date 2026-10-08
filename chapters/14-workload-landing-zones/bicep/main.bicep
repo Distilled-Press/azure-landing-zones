@@ -102,17 +102,122 @@ var publicAccessCheck = workspacePublicNetworkAccessEnabled || privateEndpointsE
 
 // ---------- 1. Spoke network (free) ----------
 
-// One NSG for both Databricks subnets, declared with no properties, as in
-// Microsoft's Databricks VNet-injection quickstart template. Databricks adds
-// its own rules to it through the subnet delegation. Known issue (README):
-// once the workspace exists, redeploying this template fails here with
-// ConflictWithNetworkIntentPolicy, because an NSG sent without rules would
-// remove the rules the workspace's network intent policy requires. Azure
-// refuses, so the rules are never lost, but the deployment can't be re-run.
+// One NSG for both Databricks subnets. Through the subnet delegation the
+// workspace adds its required rules to it and puts a network intent policy on
+// the subnets that requires them. A deployment is a PUT of the whole NSG, so
+// an NSG declared without these rules asks Azure to delete them, and Azure
+// refuses (ConflictWithNetworkIntentPolicy): the template could not be
+// redeployed while the workspace existed. So with deployDatabricks the
+// template declares the same rules Databricks creates (names, priorities,
+// descriptions as Databricks writes them; Learn's vnet-inject page lists them)
+// and a redeployment changes nothing. The set depends on requiredNsgRules:
+// AllRules adds the outbound AzureDatabricks rule at 101 and shifts Sql,
+// Storage and EventHub to 102-104; NoAzureDatabricksRules has them at 101-103.
+// The two inbound rules Learn lists for workspaces without secure cluster
+// connectivity aren't needed: SCC is always on here (disablePublicIp).
+var databricksWorkerRules = [
+  {
+    name: 'Microsoft.Databricks-workspaces_UseOnly_databricks-worker-to-worker-inbound'
+    properties: {
+      description: 'Required for worker nodes communication within a cluster.'
+      direction: 'Inbound'
+      access: 'Allow'
+      priority: 100
+      protocol: '*'
+      sourceAddressPrefix: 'VirtualNetwork'
+      sourcePortRange: '*'
+      destinationAddressPrefix: 'VirtualNetwork'
+      destinationPortRange: '*'
+    }
+  }
+  {
+    name: 'Microsoft.Databricks-workspaces_UseOnly_databricks-worker-to-worker-outbound'
+    properties: {
+      description: 'Required for worker nodes communication within a cluster.'
+      direction: 'Outbound'
+      access: 'Allow'
+      priority: 100
+      protocol: '*'
+      sourceAddressPrefix: 'VirtualNetwork'
+      sourcePortRange: '*'
+      destinationAddressPrefix: 'VirtualNetwork'
+      destinationPortRange: '*'
+    }
+  }
+]
+
+// Outbound rules to service tags, in Databricks' priority order from 101.
+var databricksServiceTagRules = concat(
+  requiredNsgRules == 'AllRules'
+    ? [
+        {
+          name: 'databricks-webapp'
+          description: 'Required for workers communication with Databricks control plane.'
+          tag: 'AzureDatabricks'
+          ports: [
+            '443'
+            '3306'
+            '8443-8451'
+          ]
+        }
+      ]
+    : [],
+  [
+    {
+      name: 'sql'
+      description: 'Required for workers communication with Azure SQL services.'
+      tag: 'Sql'
+      ports: [
+        '3306'
+      ]
+    }
+    {
+      name: 'storage'
+      description: 'Required for workers communication with Azure Storage services.'
+      tag: 'Storage'
+      ports: [
+        '443'
+      ]
+    }
+    {
+      name: 'eventhub'
+      description: 'Required for worker communication with Azure Eventhub services.'
+      tag: 'EventHub'
+      ports: [
+        '9093'
+      ]
+    }
+  ]
+)
+
+var databricksNsgRules = concat(
+  databricksWorkerRules,
+  map(databricksServiceTagRules, (rule, i) => {
+    name: 'Microsoft.Databricks-workspaces_UseOnly_databricks-worker-to-${rule.name}'
+    properties: union(
+      {
+        description: rule.description
+        direction: 'Outbound'
+        access: 'Allow'
+        priority: 101 + i
+        protocol: 'tcp' // lower case, as Databricks writes it
+        sourceAddressPrefix: 'VirtualNetwork'
+        sourcePortRange: '*'
+        destinationAddressPrefix: rule.tag
+      },
+      length(rule.ports) == 1 ? { destinationPortRange: rule.ports[0] } : { destinationPortRanges: rule.ports }
+    )
+  })
+)
+
 resource nsgDatabricks 'Microsoft.Network/networkSecurityGroups@2025-05-01' = {
   name: 'nsg-${name}-dbw'
   location: location
   tags: tags
+  properties: {
+    // Without the workspace (the free spoke) the NSG has no rules of its own.
+    securityRules: deployDatabricks ? databricksNsgRules : []
+  }
 }
 
 // Clusters need outbound access (SCC relay, storage, libraries). New VNets have

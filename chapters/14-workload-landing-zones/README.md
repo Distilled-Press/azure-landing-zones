@@ -9,7 +9,7 @@ terraform/   Terraform root module (AVM resource modules)
 bicep/       Bicep template at resource group scope + main.bicepparam (AVM resource modules)
 ```
 
-Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0 with the databricks extension 1.3.2): Terraform apply with the defaults, then `deploy_databricks = true` (workspace about 9 minutes), the README destroy (force deletion 5 min 37 s, then `terraform destroy`, 70 resources); Bicep with the defaults and with `deployDatabricks=true` (workspace 11 min 24 s), and the one-command clean-up, in a test tenant. A second Bicep deployment once the workspace exists fails (see Known issue). Not tested: hub peering (no hub deployed), `workspace_public_network_access_enabled = false` and the `browser_authentication` endpoint, `nat_gateway_enabled = false`, `private_endpoints_enabled = false`, existing DNS zones, the keep-the-spoke clean-up path, and clusters (no DBUs were run).
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0 with the databricks extension 1.3.2): Terraform apply with the defaults, then `deploy_databricks = true` (workspace about 9 minutes), the README destroy (force deletion 5 min 37 s, then `terraform destroy`, 70 resources); Bicep with the defaults and with `deployDatabricks=true` (workspace 11 min 24 s), and the one-command clean-up, in a test tenant. Bicep NSG fix re-tested the same day: `deployDatabricks=true` with private endpoints (`NoAzureDatabricksRules`) and with `privateEndpointsEnabled=false` (`AllRules`), each redeployed twice against the live workspace (all succeeded, NSG rules identical before and after, what-if NoChange for the NSG), plus a fresh deployment of the fixed template (8 min) and the one-command clean-up (force deletion). Not tested: hub peering (no hub deployed), `workspace_public_network_access_enabled = false` and the `browser_authentication` endpoint, `nat_gateway_enabled = false`, Terraform with `private_endpoints_enabled = false`, existing DNS zones, the keep-the-spoke clean-up path, and clusters (no DBUs were run).
 
 ## What it builds
 
@@ -20,7 +20,7 @@ Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0 wit
 | Databricks host ("public") subnet, delegated to `Microsoft.Databricks/workspaces` | `snet-dbw-host`, `10.12.0.0/24` | Always |
 | Databricks container ("private") subnet, delegated the same way | `snet-dbw-container`, `10.12.1.0/24` | Always |
 | Private endpoint subnet | `snet-pe`, `10.12.2.0/27` | Always |
-| NSG on both Databricks subnets (empty; Databricks adds its rules) | `nsg-alz-data-uksouth-dbw` | Always |
+| NSG on both Databricks subnets (no rules for the free spoke; with the workspace, Databricks' required rules: Terraform lets Databricks add them, Bicep declares them) | `nsg-alz-data-uksouth-dbw` | Always |
 | Peering to the chapter 8 hub, both directions | `peer-alz-data-uksouth-to-hub`, `peer-hub-to-alz-data-uksouth` | `hub_peering_enabled` |
 | NAT gateway **StandardV2** with one StandardV2 public IP, on both Databricks subnets | `ng-alz-data-uksouth`, `pip-alz-data-uksouth-ng` | `deploy_databricks` (and `nat_gateway_enabled`, default true) |
 | Azure Databricks workspace, **Premium**, VNet injection, no public IP on cluster nodes | `dbw-alz-data-uksouth` | `deploy_databricks` |
@@ -118,7 +118,7 @@ az deployment group create --resource-group rg-alz-data-uksouth --name ch14-data
   hubPeeringEnabled=true hubVirtualNetworkId=<hub VNet resource ID> deployDatabricks=true
 ```
 
-Bicep deployments are incremental: deploying again with `deployDatabricks=false` removes nothing. **Once the workspace exists, a second deployment of this template fails** (see Known issue below), so deploy the network and the billable parts in the order shown, and change anything else before `deployDatabricks=true`.
+Bicep deployments are incremental: deploying again with `deployDatabricks=false` removes nothing (and while the workspace exists it fails at the NSG, because the free spoke's NSG has no rules: force-delete the workspace first, as in the keep-the-spoke steps below). Redeploying with `deployDatabricks=true` while the workspace exists is safe: the template declares the NSG rules Databricks requires (see "The Databricks NSG rules in Bicep" below).
 
 Clean up with one command (about 10 minutes with a workspace), which deletes the workspace with force deletion (so the managed resource group and the workspace catalog go too) and everything else in the group:
 
@@ -139,17 +139,24 @@ az group delete --name rg-alz-data-uksouth-dbw-managed --yes
 
 To remove only the billable parts and keep the spoke (not tested): force-delete the workspace (`az databricks workspace delete --force-deletion ...` as above), redeploy with `deployDatabricks=false` (this detaches the NAT gateway from the subnets; do it **before** deleting the NAT gateway, which can't be deleted while subnets use it), then delete the NAT gateway, its public IP, the private endpoints, the DNS zones, the lake and the access connector.
 
-### Known issue: the Bicep NSG can't be redeployed while the workspace exists
+### The Databricks NSG rules in Bicep
 
-The NSG is declared with no properties so that a redeployment wouldn't remove Databricks' rules. Tested on 8 October 2026, it doesn't work that way: a resource with no `properties` is sent as an NSG with no security rules, which asks Azure to remove the rules Databricks added. Azure refuses, because the workspace puts a network intent policy on its subnets that requires them, and the whole deployment fails:
+When the workspace is created, Databricks adds its required rules to the NSG through the subnet delegation and puts a network intent policy on both subnets that requires them. A Bicep deployment sends the whole NSG, so an NSG declared without those rules asks Azure to delete them, and Azure refuses with `ConflictWithNetworkIntentPolicy` ("Network Security Group doesn't have supporting Security Rule for Network Intent Policy Security Rule: Name: databricks-worker-to-sql ..."). That is what happened before 8 October 2026, when the NSG was declared with no properties (as it still is in Microsoft's quickstart template): the first deployment worked, every later one failed.
 
-```
-ConflictWithNetworkIntentPolicy: Network Security Group cannot have resources which conflict with its subnets' network intent policies.
-... conflicts with Network Intent Policy: adb-uksouth-dp-to-cp-pl-<id>
-Network Security Group doesn't have supporting Security Rule for Network Intent Policy Security Rule: Name: databricks-worker-to-sql ...
-```
+So with `deployDatabricks=true`, `main.bicep` declares the rules itself (`securityRules`, built from the `databricksWorkerRules` and `databricksServiceTagRules` variables), with the names, priorities, descriptions and lower-case `tcp` protocol Databricks writes, so a redeployment changes nothing:
 
-Nothing is changed (the rules stay as they were), but any redeployment of `main.bicep` with the workspace in place fails at the NSG, including one that only adds hub peering. Microsoft's quickstart template declares the NSG the same way, so it has the same limit. A PUT of the NSG that includes Databricks' current rules was accepted in the test, so declaring the rules explicitly (Learn's vnet-inject page lists them; the set depends on `requiredNsgRules`) is a likely fix, but it wasn't built or tested here. Terraform isn't affected: the AVM NSG module ignores changes to security rules, and `terraform plan` after the workspace was created showed no changes.
+| Rule (`Microsoft.Databricks-workspaces_UseOnly_databricks-worker-to-...`) | Direction | Protocol | Destination | Ports | Priority with `NoAzureDatabricksRules` | Priority with `AllRules` |
+|---|---|---|---|---|---|---|
+| `worker-inbound` | Inbound | Any | VirtualNetwork | Any | 100 | 100 |
+| `worker-outbound` | Outbound | Any | VirtualNetwork | Any | 100 | 100 |
+| `databricks-webapp` | Outbound | TCP | AzureDatabricks | 443, 3306, 8443-8451 | (not there) | 101 |
+| `sql` | Outbound | TCP | Sql | 3306 | 101 | 102 |
+| `storage` | Outbound | TCP | Storage | 443 | 102 | 103 |
+| `eventhub` | Outbound | TCP | EventHub | 9093 | 103 | 104 |
+
+Source is `VirtualNetwork`, any source port, for every rule. These are Learn's rules for workspaces (vnet-inject page) without the two inbound `AzureDatabricks` rules (22 and 5557) that are added only when secure cluster connectivity is off; it's always on here. The names and priorities aren't on Learn: they're what Databricks created in the test, and the set follows `requiredNsgRules`, which the template derives from `privateEndpointsEnabled`. Learn notes that Databricks is removing the `Sql` 3306 requirement for new workspaces; if Databricks changes the rules it creates, the declared set no longer matches (not tested what Azure then does): compare `az network nsg rule list` on the workspace's NSG with the variables and update them. Without the workspace (`deployDatabricks=false`) the NSG has no rules.
+
+Terraform doesn't need this: the AVM NSG module ignores changes to security rules, and `terraform plan` after the workspace was created showed no changes.
 
 ## Inputs
 
@@ -204,7 +211,7 @@ The chapter's Build it text is written from these points.
 
 1. **The landing zone is the spoke, not the workspace.** The resource group, VNet, delegated subnets and NSG are free and always there; the workload's billed resources hang off one switch (`count = var.deploy_databricks ? 1 : 0`; Bicep `= if (deployDatabricks)`). That's the shape of a vended workload landing zone: the platform provides the address space and connectivity, the workload team adds the service.
 2. **Two subnets, delegated, with an NSG** (`delegations = local.databricks_delegation` and `network_security_group = { id = ... }` on `host` and `container`; Bicep `delegation: 'Microsoft.Databricks/workspaces'`). The delegation lets Databricks manage the subnets' network policy and add its required NSG rules itself.
-3. **The NSG starts empty and must stay out of Databricks' way.** Databricks writes its rules into the NSG (with back-end Private Link, five rules: worker-to-worker in and out, and outbound to `Sql` 3306, `Storage` 443 and `EventHub` 9093). The Terraform AVM NSG module ignores changes to security rules, so it never removes them. The Bicep AVM NSG module always sends `securityRules: []`, so the Bicep version declares the NSG as a plain resource with no properties, as Microsoft's Databricks VNet-injection quickstart template does. That works for the first deployment, but a redeployment still sends an NSG with no rules, and Azure rejects it (see Known issue).
+3. **The NSG holds Databricks' rules, and the code must never remove them.** Databricks writes its rules into the NSG and enforces them with a network intent policy on the subnets (with back-end Private Link, five rules: worker-to-worker in and out, and outbound to `Sql` 3306, `Storage` 443 and `EventHub` 9093; without it, a sixth to `AzureDatabricks`). The Terraform AVM NSG module ignores changes to security rules, so it never touches them. A Bicep deployment sends the NSG's complete rule list (the Bicep AVM NSG module always sends `securityRules: []`, and a plain resource with no properties sends none either), so the Bicep version declares the NSG as a plain resource whose `securityRules` are exactly Databricks' rules for the `requiredNsgRules` value in use (see "The Databricks NSG rules in Bicep"). Redeployments then send what's already there, and Azure accepts them.
 4. **VNet injection and SCC are four parameters** (`custom_parameters.virtual_network_id`, `public_subnet_name`, `private_subnet_name`, `no_public_ip = true`; Bicep `customVirtualNetworkResourceId`, `customPublicSubnetName`, `customPrivateSubnetName`, `disablePublicIp: true`). Without `no_public_ip`, every cluster node would get a public IP and the control plane would connect in; with it, nodes connect out to the relay on 443.
 5. **Egress is explicit** (`module "nat_gateway"`, and `nat_gateway = { id = ... }` on both subnets). New VNets have no default outbound access, so without the NAT gateway (or routes to a firewall) clusters can't reach the relay and fail to start. StandardV2 is zone-redundant and needs a StandardV2 public IP; that IP is the clusters' stable egress address for allow lists.
 6. **Back-end Private Link changes the NSG rules** (`subresource_name = "databricks_ui_api"` in the spoke's `snet-pe`, and `network_security_group_rules_required = local.required_nsg_rules`). With the endpoint, cluster-to-control-plane traffic uses Private Link and Databricks drops its outbound `AzureDatabricks` rule (`NoAzureDatabricksRules`); without it, `AllRules`. Public network access stays on so users can still reach the UI.
@@ -215,7 +222,7 @@ The chapter's Build it text is written from these points.
 ### AVM choices
 
 - Terraform: `avm-res-databricks-workspace` (0.5.0) deploys the workspace through `azapi` (API version 2026-01-01) and creates the private endpoints and the access connector. Two quirks are handled in `main.tf`. It reads the resource group with a data source, so the module call has `depends_on`; otherwise the first apply fails because the group doesn't exist at plan time. And it insists on NSG association IDs, though the AVM VNet module sets the NSG as a subnet property with no separate association resource, so the subnet IDs are passed in their place (the module only checks they're set).
-- Bicep: `avm/res/databricks/workspace` (0.12.0) uses API version 2024-05-01 and defaults `disablePublicIp` to `false`, so it's set explicitly. The access connector is its own module (`avm/res/databricks/access-connector`). The NSG is a plain resource (point 3).
+- Bicep: `avm/res/databricks/workspace` (0.12.0) uses API version 2024-05-01 and defaults `disablePublicIp` to `false`, so it's set explicitly. The access connector is its own module (`avm/res/databricks/access-connector`). The NSG is a plain resource that declares Databricks' rules (point 3).
 - There is no AVM pattern module for a Databricks workload landing zone, so resource modules are composed here.
 
 ## Versions
@@ -254,6 +261,6 @@ The chapter's Build it text is written from these points.
 - Databricks units and billing: https://learn.microsoft.com/azure/databricks/getting-started/concepts and https://learn.microsoft.com/azure/databricks/lakehouse-architecture/cost-optimization/best-practices
 - NAT Gateway SKUs (StandardV2 needs StandardV2 public IPs, same price as Standard, regions without StandardV2): https://learn.microsoft.com/azure/nat-gateway/nat-sku and https://learn.microsoft.com/azure/nat-gateway/manage-nat-gateway-v2
 - Default outbound access: https://learn.microsoft.com/azure/virtual-network/ip-services/default-outbound-access
-- Microsoft's quickstart template (NSG declared with no properties): https://github.com/Azure/azure-quickstart-templates/tree/master/quickstarts/microsoft.databricks/databricks-all-in-one-template-for-vnet-injection-with-nat-gateway
+- Microsoft's quickstart template (declares the NSG with no properties, the pattern that failed on redeploy here): https://github.com/Azure/azure-quickstart-templates/tree/master/quickstarts/microsoft.databricks/databricks-all-in-one-template-for-vnet-injection-with-nat-gateway
 - Terraform modules: https://registry.terraform.io/modules/Azure/avm-res-databricks-workspace/azurerm/0.5.0 (and the other `avm-res-*` pages)
 - Bicep modules: https://github.com/Azure/bicep-registry-modules/tree/main/avm/res/databricks
