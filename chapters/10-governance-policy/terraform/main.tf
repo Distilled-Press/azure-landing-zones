@@ -198,8 +198,10 @@ resource "azurerm_management_group_policy_assignment" "inherit_tag" {
 resource "azurerm_role_assignment" "inherit_tag" {
   for_each = toset([for id in data.azurerm_policy_definition_built_in.inherit_tag.role_definition_ids : lower(basename(id))])
 
-  scope              = azurerm_management_group.test.id
-  role_definition_id = "${azurerm_management_group.test.id}/providers/Microsoft.Authorization/roleDefinitions/${each.value}"
+  scope = azurerm_management_group.test.id
+  # Built-in role IDs in the form Azure returns them (no scope prefix): a
+  # management-group-prefixed ID makes every plan replace this assignment.
+  role_definition_id = "/providers/Microsoft.Authorization/roleDefinitions/${each.value}"
   principal_id       = azurerm_management_group_policy_assignment.inherit_tag.identity[0].principal_id
   principal_type     = "ServicePrincipal"
   description        = "Policy assignment ${azurerm_management_group_policy_assignment.inherit_tag.name}: roles from the definition's roleDefinitionIds"

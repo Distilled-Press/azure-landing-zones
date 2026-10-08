@@ -16,7 +16,7 @@ GitHub repository  ──OIDC token──►  Microsoft Entra ID  ──access t
   apply job (approved)    sub = repo:org/repo:environment:alz-apply ─► id-alz-platform-apply  (Owner on the management group)
 ```
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply and destroy, Bicep deployment and the clean-up commands below, against a test management group, with placeholder GitHub subjects (no pipeline run, so no token exchange was tested). The pipelines and the accelerator weren't run; actionlint wasn't available in the test environment, so the workflow wasn't re-linted.
 
 ## The identities (`terraform/`, `bicep/`)
 
@@ -49,7 +49,7 @@ Issuer `https://token.actions.githubusercontent.com`; audience `api://AzureADTok
 - **Azure CLI** signed in (`az login`) as a person: this is the one-off bootstrap that creates the pipeline's identities.
 - **Permissions:** Owner on the management group (it creates role assignments there) and Owner on the subscription (resource group, identities, the subscription Reader assignment and, if enabled, storage and its container role assignments). User Access Administrator or Role Based Access Control Administrator plus Contributor also works.
 - **The management group** exists: chapter 6's intermediate root `alz`, or a test management group.
-- **Bicep only:** the deployment runs at the management group and reaches into the subscription, and ARM only allows a management group deployment to target subscriptions **in that management group** (at any depth). In a real platform the management subscription sits under the intermediate root, so this holds. In a test where it doesn't, deploy at a management group that contains the subscription (for example the tenant root group) or use the Terraform version, which has no such limit.
+- **Bicep only:** the deployment runs at the management group and reaches into the subscription through modules. Learn's page on management group deployments describes targeting subscriptions *within* the management group, and the account deploying needs access to both scopes. In a real platform the management subscription sits under the intermediate root anyway. In the test, a deployment at a test management group that did **not** contain the subscription also succeeded.
 - **Sign-in subscription:** `azure/login` (with `subscription-id`) and the Azure DevOps `AzureCLI@2` task select a subscription when they sign in, so the identities must be able to read one. When the subscription sits under the management group, Reader is inherited and you can set `subscription_reader_enabled = false`; the default `true` adds an explicit Reader assignment so the test works anywhere.
 - **Licences:** none in Azure. GitHub: OIDC works on every plan, but GitHub's documentation says that on the Free, Pro and Team plans **required reviewers** for an environment are only available for **public** repositories; for a private platform repository the approval gate needs GitHub Enterprise (or use Azure DevOps, where environment approvals have no such limit). Azure DevOps: nothing beyond your organisation's pipelines.
 
@@ -93,9 +93,11 @@ MG=alz
 SUB=00000000-0000-0000-0000-000000000000
 RG=rg-alz-platform-automation-uksouth
 
+# --all covers subscriptions and below, so list the management group scope too
 for ID in id-alz-platform-plan-uksouth id-alz-platform-apply-uksouth; do
   PRINCIPAL=$(az identity show --subscription $SUB -g $RG -n $ID --query principalId -o tsv)
-  for RA in $(az role assignment list --all --assignee "$PRINCIPAL" --query "[].id" -o tsv); do
+  for RA in $(az role assignment list --all --assignee "$PRINCIPAL" --query "[].id" -o tsv) \
+            $(az role assignment list --scope "/providers/Microsoft.Management/managementGroups/$MG" --assignee "$PRINCIPAL" --query "[].id" -o tsv); do
     az role assignment delete --ids "$RA"
   done
 done
@@ -103,7 +105,9 @@ done
 # Identities, federated credentials and (if created) the state storage account
 az group delete --subscription $SUB --name $RG --yes
 
-# Deployment records (optional)
+# Deployment records (optional). The modules leave their own records too:
+# ch13-ra-* and role-asi-mg-* at the management group, ch13-rg and
+# role-asi-sub-* at the subscription.
 az deployment mg delete --management-group-id $MG --name ch13-identity
 ```
 

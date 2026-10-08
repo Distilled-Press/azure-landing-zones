@@ -23,7 +23,7 @@ The names start with the `prefix` input (default `alz`).
 | `terraform/` | Terraform root module with plain `azurerm` policy resources. It also creates the test management group. |
 | `bicep/` | Bicep deployment at management group scope: raw resources for the definition and initiative, AVM modules for the assignments, exemption and remediation. It deploys **into an existing** management group (create it with the CLI first, below). |
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply with the defaults under the tenant root group (8 resources), then with `create_remediation_task = true`, and destroy; Bicep deployment (also with `createRemediationTask = true`) and every clean-up command below, in a test tenant. The remediation task was created and completed with nothing to remediate (no subscriptions under the group); remediation of real resources and `Default` enforcement weren't tested, because no subscription was placed under the test group.
 
 ## Prerequisites
 
@@ -57,6 +57,8 @@ Destroy:
 terraform destroy
 ```
 
+If the first apply stops with a transient error such as `CheckAccessPrincipalTokenInvalid` on the exemption or a reset connection on the role assignment, run `terraform apply` again (without the saved plan); it creates only what is missing.
+
 This removes, in dependency order: the remediation task (if created), the role assignment, the exemption, both assignments, the initiative, the definition and finally the management group. If the management group delete fails because Azure still reports a child for a few seconds, run `terraform destroy` again.
 
 ## Deploy and destroy: Bicep
@@ -74,7 +76,7 @@ az deployment mg what-if --management-group-id alz-policytest --location uksouth
 az deployment mg create  --management-group-id alz-policytest --location uksouth --name ch10-policy --parameters main.bicepparam
 ```
 
-`--location` is where the deployment record is stored and the default for the policy identity's region. If the first deployment fails because the new management group or definitions aren't visible yet ("out of scope", "not found"), wait a few minutes and run the same `create` again; it is idempotent.
+`--location` is where the deployment record is stored and the default for the policy identity's region. If the first deployment fails because the new management group or definitions aren't visible yet ("out of scope", "not found"), wait a few minutes and run the same `create` again; it is idempotent. If a re-run then fails on the Modify assignment's role assignment with `RoleAssignmentUpdateNotPermitted`, the assignment got a new managed identity in between (it happened once in testing, straight after a failed first run) and the AVM module's role assignment name doesn't change with the principal: delete the Contributor role assignment whose principal no longer matches `az policy assignment show --name alz-inherit-tag --scope /providers/Microsoft.Management/managementGroups/alz-policytest --query identity.principalId` (list them with `az role assignment list --scope /providers/Microsoft.Management/managementGroups/alz-policytest`) and run `create` again.
 
 **`exemptionExpiresOn` defaults to 30 days after the deployment runs, so every redeployment with the default moves the expiry.** Set it in `main.bicepparam` for a fixed date.
 

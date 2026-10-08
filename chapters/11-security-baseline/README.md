@@ -20,7 +20,7 @@ Subscription <subscription_id>
 | `terraform/` | `azapi` for the security contact, `azurerm` for plans, workspace, Sentinel onboarding and the Activity log diagnostic setting. |
 | `bicep/` | Subscription-scope deployment with AVM modules: `avm/ptn/security/security-center` (contact and plans), `avm/res/resources/resource-group`, `avm/res/operational-insights/workspace` (with Sentinel onboarding) and `avm/res/insights/diagnostic-setting`. |
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply with the defaults (security contact only), then with `deploy_sentinel = true` (workspace, Sentinel onboarding, Activity log diagnostic setting), and destroy; Bicep deployment with the defaults and with `deploySentinel = true`, and the clean-up commands below, in a test subscription. Every Defender plan tier was checked before and after: neither version changed any plan, and destroy/clean-up left no security contact. Paid Defender plans (`defender_plans` / `defenderPlans`) weren't applied, to avoid charges; their reset to Free on destroy is untested.
 
 ## Read this first: Defender plans are subscription-wide
 
@@ -67,7 +67,7 @@ Destroy:
 terraform destroy
 ```
 
-This removes the Activity log diagnostic setting, the Sentinel onboarding, the workspace (permanently: `permanently_delete_on_destroy = true` skips the 14-day soft delete so the name can be reused), the resource group and the security contact, and **sets every plan in `defender_plans` back to Free**. Afterwards the subscription is back to Defender for Cloud's defaults: foundational CSPM only, and with no security contact, Defender for Cloud's default of emailing subscription owners about high-severity alerts and attack paths.
+This removes the Activity log diagnostic setting, the Sentinel onboarding, the workspace (permanently: `permanently_delete_on_destroy = true` skips the 14-day soft delete so the name can be reused), the resource group and the security contact, and **sets every plan in `defender_plans` back to Free**. The Activity log diagnostic setting is the slow part: in testing its delete took over 11 minutes, because the provider waits until the subscription's list of diagnostic settings stops showing it, which lags behind the delete itself. Afterwards the subscription is back to Defender for Cloud's defaults: foundational CSPM only, and with no security contact, Defender for Cloud's default of emailing subscription owners about high-severity alerts and attack paths.
 
 ## Deploy and destroy: Bicep
 
@@ -97,8 +97,10 @@ az monitor log-analytics workspace delete --resource-group rg-$NAME --workspace-
   --subscription $SUB --force --yes      # --force skips the 14-day soft delete
 az group delete --name rg-$NAME --subscription $SUB --yes
 
-# 4. Optional: the deployment records
-az deployment sub delete --name ch11-security --subscription $SUB
+# 4. Optional: the deployment records (the top-level one and the module deployments at subscription scope)
+for D in ch11-security ch11-alz-defender ch11-alz-rg ch11-alz-activity; do   # ch11-<prefix>-...
+  az deployment sub delete --name $D --subscription $SUB
+done
 ```
 
 `az security contact` is marked Preview in the Azure CLI.

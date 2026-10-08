@@ -94,9 +94,10 @@ module "dns_resolver" {
         default = {
           name                                        = "dnsfrs-${local.dns_name}"
           link_with_outbound_endpoint_virtual_network = true
+          # The module names each rule after its map key (it ignores a
+          # rule's name attribute), so the key is the rule name.
           rules = {
-            onprem = {
-              name                     = "rule-${trimsuffix(replace(var.onprem_domain_name, ".", "-"), "-")}"
+            "rule-${trimsuffix(replace(var.onprem_domain_name, ".", "-"), "-")}" = {
               domain_name              = var.onprem_domain_name
               destination_ip_addresses = { for ip in var.onprem_dns_servers : ip => "53" }
             }

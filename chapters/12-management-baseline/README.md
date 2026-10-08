@@ -23,7 +23,7 @@ Names start with the `prefix` input (default `alz`) and end with the region wher
 | `bicep/main.bicep` | Everything above except AMBA (subscription deployment). |
 | `bicep/amba.bicep` | Opt-in, separate management group deployment: all AMBA definitions and initiatives from the AMBA release 2026-06-03 templates, and a **subset** of two assignments (Resource and Service Health, Notification Assets). See [AMBA in Bicep](#amba-in-bicep). |
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply and destroy of the baseline; Bicep deployment of `main.bicep` and the clean-up commands, in a test tenant. **AMBA failed in both versions** (see [Known issue: AMBA initiatives rejected](#known-issue-amba-initiatives-rejected)): the Terraform apply created the 143 definitions, 12 of 16 initiatives and the AMBA identity, then stopped; `amba.bicep` created the definitions and stopped at the initiatives. No AMBA assignment was created, so assignments, their role assignments and enforcement mode weren't verified. Both were destroyed with the commands below.
 
 The baseline is testable on its own: it needs a subscription, not chapter 6's hierarchy. Its outputs are the IDs chapter 6's `policy_default_values` asks for (see [Feeding chapter 6](#feeding-chapter-6)).
 
@@ -73,6 +73,10 @@ terraform apply tfplan
 ```
 
 The management group must already exist. As in chapter 6, its ID is written in `lib/architecture_definitions/amba_single.alz_architecture_definition.json`, which the ALZ provider reads before Terraform plans anything, so a small helper rewrites it. The helper only writes a local file; don't run `terraform destroy` in `set-amba-scope/` (run it again with the old ID to go back). If the file and `amba_management_group_id` disagree, the plan stops with an error that says so.
+
+### Known issue: AMBA initiatives rejected
+
+In the test on 8 October 2026, Azure rejected four AMBA initiatives from library platform/amba 2026.06.2 (`Alerting-VM`, `Alerting-VMSS`, `Alerting-HybridVM`, `Alerting-ResourceAndServiceHealth`) with `PolicySetParameterAllowedValuesMismatch`: some initiative parameters allow values the policy definitions don't (for example `PT1M` for `evaluationFrequency`, `P1D` for `windowSize`, and `deployIfNotExists`/`disabled` in lower case for the built-in Service Health policy's `effect`). The apply stops before any assignment is created. Earlier library releases (2026.06.1, 2026.06.0, 2026.01.1) contain the same mismatches, and AMBA's own ARM templates (release 2026-06-03, used by `amba.bicep`) fail the same way, plus a fifth initiative, `Alerting-LandingZone`. Replacing the four initiatives through a local library with `library_overwrite_enabled = true` didn't work with ALZ provider 0.22.0: the library's own copies were still used. Until AMBA publishes a fixed release, `deploy_amba = true` and `amba.bicep` don't complete; destroy what the failed run created (below).
 
 The first plan with AMBA on is slower: the ALZ provider downloads the library into `.alzlib/` (git-ignored) and reads built-in policy definitions from Azure. A plan in the test tenant showed 244 resources to add: 19 for the baseline and 225 for AMBA.
 
@@ -124,9 +128,12 @@ SUB=00000000-0000-0000-0000-000000000000          # the management subscription
 SCOPE="/providers/Microsoft.Management/managementGroups/$MG"
 
 # 1. The two AMBA assignments, and the role assignments held by their managed identities
+#    (--all covers subscriptions and below, so list the management group scope too)
 for PA in Deploy-AMBA-Res-SvcHlth Deploy-AMBA-Notification; do
   PRINCIPAL=$(az policy assignment show --name "$PA" --scope "$SCOPE" --query identity.principalId -o tsv)
-  for RA in $(az role assignment list --all --assignee "$PRINCIPAL" --query "[].id" -o tsv); do
+  [ -z "$PRINCIPAL" ] && continue
+  for RA in $(az role assignment list --all --assignee "$PRINCIPAL" --query "[].id" -o tsv) \
+            $(az role assignment list --scope "$SCOPE" --assignee "$PRINCIPAL" --query "[].id" -o tsv); do
     az role assignment delete --ids "$RA"
   done
   az policy assignment delete --name "$PA" --scope "$SCOPE"
@@ -151,6 +158,7 @@ az monitor log-analytics workspace delete --subscription $SUB \
   --resource-group rg-alz-management-uksouth --workspace-name log-alz-uksouth --force --yes
 az group delete --subscription $SUB --name rg-alz-management-uksouth --yes
 az deployment sub delete --subscription $SUB --name ch12-management
+az deployment sub delete --subscription $SUB --name ch12-rg        # the resource group module's own record
 ```
 
 If you ran `amba.bicep` in `Default` mode or ran remediation, also run AMBA's clean-up script (see [Destroy (Terraform)](#destroy-terraform)) to remove the `rg-amba-monitoring-001` resource groups, alerts, alert processing rules and action groups the policies created in each subscription.

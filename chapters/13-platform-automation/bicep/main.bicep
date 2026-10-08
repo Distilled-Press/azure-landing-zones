@@ -3,10 +3,9 @@
 // repository (no secrets), each given a role on the management group this
 // template is deployed to, plus optional Terraform state storage.
 //
-// Deploy at the management group that should receive the roles. The
-// subscription that holds the identities must be in that management group (or
-// below it): ARM only lets a management group deployment reach subscriptions in
-// the management group.
+// Deploy at the management group that should receive the roles. The resource
+// group and identities go into subscriptionId through modules; the account
+// deploying needs access to both scopes (see README, Prerequisites).
 //   az deployment mg create --management-group-id alz --location uksouth \
 //     --name ch13-identity --parameters main.bicepparam
 targetScope = 'managementGroup'

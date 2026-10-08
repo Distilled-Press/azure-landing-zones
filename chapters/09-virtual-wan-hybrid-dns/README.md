@@ -13,7 +13,7 @@ terraform/   Terraform root module (AVM pattern and resource modules)
 bicep/       Bicep template at subscription scope + main.bicepparam
 ```
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply and destroy against chapter 8's hub with the defaults (zones and links), with the DNS Private Resolver, and with the Virtual WAN (hub only: about 26 minutes to create, 12 to destroy); Bicep deployment with the defaults and the clean-up commands, in a test tenant. The secured hub, routing intent, and the Bicep resolver and Virtual WAN were not applied (hourly billing; the Terraform equivalents were).
 
 ## What it builds
 
@@ -80,7 +80,7 @@ The billable parts:
 
 ```bash
 terraform apply -var deploy_dns_resolver=true                                 # a few minutes
-terraform apply -var deploy_virtual_wan=true                                  # hub: up to about 30 minutes
+terraform apply -var deploy_virtual_wan=true                                  # hub: up to about 30 minutes (and over 10 to remove)
 terraform apply -var deploy_virtual_wan=true -var deploy_secured_hub=true \
                 -var deploy_routing_intent=true                               # adds the firewall and routing intent
 terraform apply                                                               # back to the free defaults
@@ -93,6 +93,8 @@ terraform destroy
 ```
 
 Terraform deletes in dependency order: forwarding rule, ruleset link and ruleset before the outbound endpoint (Azure refuses the other order), routing intent before the hub firewall, the firewall before the hub, and the hub before the virtual WAN. Removing a virtual hub takes a while.
+
+Deleting the resolver's endpoints also removes the `Microsoft.Network/dnsResolvers` delegation from chapter 8's two DNS subnets (Azure's resolver service does this when it releases each subnet). Chapter 8's next `terraform apply` puts the delegations back (it shows them as two in-place subnet updates); run it, or redeploy chapter 8's Bicep, before deploying the resolver again.
 
 ## Deploy and destroy: Bicep
 
@@ -116,7 +118,7 @@ SUB=<subscription-id>
 DNS_RG=rg-alz-dns-uksouth
 VWAN_RG=rg-alz-vwan-uksouth
 
-# 1. Resolver: the ruleset and its VNet links must go before the outbound endpoint
+# 1. Resolver, if deployed: the ruleset and its VNet link must go before the outbound endpoint
 az dns-resolver vnet-link delete          --subscription $SUB -g $DNS_RG --ruleset-name dnsfrs-alz-dns-uksouth -n link-hub --yes
 az dns-resolver forwarding-ruleset delete --subscription $SUB -g $DNS_RG -n dnsfrs-alz-dns-uksouth --yes
 az dns-resolver delete                    --subscription $SUB -g $DNS_RG -n dnspr-alz-dns-uksouth --yes

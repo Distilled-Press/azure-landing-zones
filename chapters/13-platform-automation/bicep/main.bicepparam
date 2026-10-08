@@ -1,7 +1,6 @@
 using 'main.bicep'
 
-// Deploy at the management group that should receive the roles (the identities'
-// subscription must be in it, or below it):
+// Deploy at the management group that should receive the roles:
 //   az deployment mg create --management-group-id alz --location uksouth \
 //     --name ch13-identity --parameters main.bicepparam
 

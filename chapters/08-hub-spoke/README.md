@@ -9,7 +9,7 @@ terraform/   Terraform root module (AVM resource modules)
 bicep/       Bicep template at subscription scope + main.bicepparam (AVM resource modules)
 ```
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, Bicep CLI 0.48.1, Azure CLI 2.91.0): Terraform apply with the defaults, with `deploy_firewall=true` (Basic), back to the defaults (firewall removed) and destroy; Bicep deployment with the defaults and the clean-up commands, in a test tenant. The VPN gateway was planned (`terraform plan` with `deploy_vpn_gateway=true`) but not applied (30-45 minutes each way, billed per hour); the Bicep firewall and gateway were not deployed.
 
 ## What it builds
 
@@ -67,7 +67,7 @@ terraform apply tfplan
 Switch the billable parts on when you need them, and off again afterwards:
 
 ```bash
-terraform apply -var deploy_firewall=true                                # a few minutes
+terraform apply -var deploy_firewall=true                                # about 7 minutes (removing it takes about 8)
 terraform apply -var deploy_firewall=true -var deploy_vpn_gateway=true   # the gateway takes 45+ minutes
 terraform apply                                                          # back to the free defaults: removes both
 ```

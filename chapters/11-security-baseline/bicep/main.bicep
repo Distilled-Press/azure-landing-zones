@@ -111,14 +111,15 @@ module defender 'br/public:avm/ptn/security/security-center:0.3.0' = {
         state: empty(notifyRoles) ? 'Off' : 'On'
         roles: notifyRoles
       }
+      // Same order as the API returns them (and as the Terraform version)
       notificationsSources: [
-        {
-          sourceType: 'Alert'
-          minimalSeverity: alertMinimalSeverity
-        }
         {
           sourceType: 'AttackPath'
           minimalRiskLevel: attackPathMinimalRiskLevel
+        }
+        {
+          sourceType: 'Alert'
+          minimalSeverity: alertMinimalSeverity
         }
       ]
     }

@@ -41,14 +41,16 @@ resource "azapi_resource" "security_contact" {
         state = length(var.notify_roles) > 0 ? "On" : "Off"
         roles = var.notify_roles
       }
+      # In the order the API returns them (AttackPath first); the other
+      # order shows as a change on every plan.
       notificationsSources = [
-        {
-          sourceType      = "Alert"
-          minimalSeverity = var.alert_minimal_severity
-        },
         {
           sourceType       = "AttackPath"
           minimalRiskLevel = var.attack_path_minimal_risk_level
+        },
+        {
+          sourceType      = "Alert"
+          minimalSeverity = var.alert_minimal_severity
         },
       ]
     }
