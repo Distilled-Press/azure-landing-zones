@@ -67,6 +67,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-05-01' = {
         addressSpace
       ]
     }
+    // Azure's default, but stated: without it what-if reports a Delete of
+    // this property on every run, which the drift check would flag.
+    privateEndpointVNetPolicies: 'Disabled'
     // Inline subnets: a VNet deployed without a subnet that exists in Azure
     // would try to delete it, so every subnet is listed here.
     subnets: [

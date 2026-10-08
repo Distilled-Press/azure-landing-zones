@@ -80,9 +80,11 @@ jobs:
             whatif.json > drift.json
           count=$(jq 'length' drift.json)
 
-          # A readable summary: change type, resource ID, then each changed property.
+          # A readable summary: change type, resource ID, then each changed property
+          # (and, for an Array change such as an added NSG rule, each changed item).
           jq -r '.[] | "\(.changeType)  \(.resourceId)",
-            (.delta // [] | .[] | "    \(.propertyChangeType)  \(.path): \(.before // "" | tostring) => \(.after // "" | tostring)")' \
+            (.delta // [] | .[] | "    \(.propertyChangeType)  \(.path): \(.before // "" | tostring) => \(.after // "" | tostring)",
+              (.children // [] | .[] | "      \(.propertyChangeType)  [\(.path)]: \(.before // "" | tostring) => \(.after // "" | tostring)"))' \
             drift.json > drift.txt
           cat drift.txt
 

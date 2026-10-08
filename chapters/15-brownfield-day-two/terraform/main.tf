@@ -2,7 +2,7 @@
 #
 # This is the configuration terraform plan -generate-config-out produced for
 # the three imported resources, cleaned up:
-#   - literal names and IDs replaced with locals and references, so the NSG
+#   - literal names and IDs replaced with locals (locals.tf) and references, so the NSG
 #     and the subnet are linked in code, not just in Azure
 #   - arguments left at their defaults or empty (null, [], "") removed
 #   - the inline security rule and subnet written as blocks
@@ -14,13 +14,6 @@
 # plain resource blocks, and the point here is the one-to-one match between
 # Azure and code. Moving into AVM modules afterwards is a refactoring step
 # (removed + import blocks), covered in the README.
-
-locals {
-  name                = "${var.prefix}-brownfield-${var.location}" # e.g. alz-brownfield-uksouth
-  resource_group_name = "rg-${local.name}"
-  nsg_name            = "nsg-${local.name}"
-  vnet_name           = "vnet-${local.name}"
-}
 
 resource "azurerm_resource_group" "brownfield" {
   name     = local.resource_group_name

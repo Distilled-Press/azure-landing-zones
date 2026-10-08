@@ -102,11 +102,13 @@ var publicAccessCheck = workspacePublicNetworkAccessEnabled || privateEndpointsE
 
 // ---------- 1. Spoke network (free) ----------
 
-// One NSG for both Databricks subnets. Plain resource, not the AVM module, on
-// purpose: Databricks adds its own rules to this NSG through the subnet
-// delegation, and the AVM module always sends securityRules: [] , which on a
-// redeployment tells Azure to remove them. Declared with no properties, as in
-// Microsoft's Databricks VNet-injection quickstart template.
+// One NSG for both Databricks subnets, declared with no properties, as in
+// Microsoft's Databricks VNet-injection quickstart template. Databricks adds
+// its own rules to it through the subnet delegation. Known issue (README):
+// once the workspace exists, redeploying this template fails here with
+// ConflictWithNetworkIntentPolicy, because an NSG sent without rules would
+// remove the rules the workspace's network intent policy requires. Azure
+// refuses, so the rules are never lost, but the deployment can't be re-run.
 resource nsgDatabricks 'Microsoft.Network/networkSecurityGroups@2025-05-01' = {
   name: 'nsg-${name}-dbw'
   location: location

@@ -5,7 +5,7 @@ Companion code for the "Build it" section of chapter 15. It takes three resource
 | Folder | What it is |
 | --- | --- |
 | `import/` | `create-unmanaged.sh` builds the "brownfield" resources with the Azure CLI only; `simulate-drift.sh` makes portal-style changes to them afterwards (and `--undo` reverses them). |
-| `terraform/` | `imports.tf`: three `import` blocks. `main.tf`: the configuration `terraform plan -generate-config-out` produced for them, cleaned up. |
+| `terraform/` | `imports.tf`: three `import` blocks. `locals.tf`: the names both files use. `main.tf`: the configuration `terraform plan -generate-config-out` produced for them, cleaned up. |
 | `bicep/` | `main.bicep` (subscription scope: the resource group) and `modules/network.bicep` (NSG and VNet): the exported, decompiled and cleaned template, deployed as a **deployment stack** to adopt the resources. |
 | `drift/github/drift-terraform.yml` | GitHub Actions: scheduled `terraform plan -detailed-exitcode` with OIDC (chapter 13's plan identity); opens or updates an issue on drift (exit code 2) and closes it when the drift is gone. |
 | `drift/github/drift-bicep.yml` | The same for Bicep: scheduled `az deployment sub what-if`, issue on any Create, Delete or Modify. |
@@ -13,7 +13,7 @@ Companion code for the "Build it" section of chapter 15. It takes three resource
 
 Everything here is free: resource groups, VNets, NSGs, deployment stacks and role definitions have no charge. The workflows use GitHub Actions minutes.
 
-Tested: not yet
+Tested: 8 October 2026 (Terraform 1.13.4, azurerm 5.8.0, Bicep CLI 0.48.1, Azure CLI 2.91.0, actionlint 1.7.12): `create-unmanaged.sh`; the Terraform import (generated configuration, 3 imported, then `No changes`), `simulate-drift.sh` (plan exit code 2) and `--undo` (exit code 0), `terraform destroy`; export and decompile, the deployment stack with `detachAll` (all three resources `managed`, what-if `NoChange`), deployment what-if and stack what-if with and without drift, the workflow's jq filter on the real what-if JSON, and the stack clean-up, in a test tenant. Not tested: the workflows themselves on GitHub (no repository, OIDC or state storage), the custom what-if role, deny settings, moving local state to the shared backend.
 
 ## The brownfield transition this code supports
 
@@ -52,18 +52,20 @@ cp terraform.tfvars.example terraform.tfvars   # subscription_id (and prefix/loc
 terraform init
 ```
 
-**See what Terraform generates.** `main.tf` is already the cleaned-up result. To see the raw output, move it aside so the three import targets have no configuration, and let Terraform write it:
+**See what Terraform generates.** `main.tf` is already the cleaned-up result. To see the raw output, move it (and `outputs.tf`, which refers to its resources) aside so the three import targets have no configuration, and let Terraform write it. The import blocks keep working because the names they use are in `locals.tf`:
 
 ```bash
 mv main.tf main.tf.cleaned
+mv outputs.tf outputs.tf.cleaned
 terraform plan -generate-config-out=generated.tf
 ```
 
-`generated.tf` has one resource block per import, with every argument the provider read from Azure, including empty and default values, literal names, and the NSG's full resource ID as a string in the subnet. HashiCorp marks configuration generation as experimental; the file must not exist beforehand, and Terraform may write arguments that conflict, in which case it reports an error and you remove one of them. Compare it with `main.tf.cleaned` (`diff generated.tf main.tf.cleaned`), then put the cleaned file back:
+`generated.tf` has one resource block per import, with every argument the provider read from Azure, including empty and default values, literal names, the NSG's full resource ID as a string in the subnet, and the rule and subnet as attribute lists (`security_rule = [{ ... }]`). HashiCorp marks configuration generation as experimental; the file must not exist beforehand, and Terraform may write arguments it then rejects. In the deploy test (azurerm 5.8.0) the plan wrote the file but ended in errors on the VNet block: `flow_timeout_in_minutes = 0` (allowed range 4-30), the subnet's read-only `id`, and `route_table_id = ""` ("cannot parse an empty string"); the summary said `2 to import`, because the VNet's block wasn't valid yet. Deleting those three arguments is the first step of the clean-up. Compare it with `main.tf.cleaned` (`diff generated.tf main.tf.cleaned`), then put the cleaned files back:
 
 ```bash
 rm generated.tf
 mv main.tf.cleaned main.tf
+mv outputs.tf.cleaned outputs.tf
 ```
 
 The clean-up, as done in `main.tf`: literal values replaced with locals and references (the subnet's `security_group = azurerm_network_security_group.app.id`), arguments at their defaults or empty removed, read-only values (`id`, `guid`) removed, and the inline security rule and subnet written as blocks. Whatever is left must describe exactly what's in Azure.
@@ -97,9 +99,11 @@ az group export --name rg-alz-brownfield-uksouth > exported.json
 az bicep decompile --file exported.json      # writes exported.bicep
 ```
 
-The portal can export Bicep directly (resource group > Export template > Bicep). Learn's Bicep export page says Bicep can only be exported from the portal; the Azure CLI 2.91 used here also has `az group export --export-format bicep`. Either way, Learn is clear that an export is a starting point, not a production template: it's generated from the published schemas, includes properties you wouldn't set, parameterises names without defaults and hard-codes most values.
+Decompiling this export reports errors (BCP062 and a BCP080 cycle): the export lists each rule and subnet twice, inline in the parent and as a child resource that references the parent, and the inline copies reference the children's IDs. Removing the child resources (the clean-up below) clears them.
 
-The clean-up, as done in `modules/network.bicep`: generated parameter names (in the style `virtualNetworks_vnet_alz_brownfield_uksouth_name`) and hard-coded IDs replaced with parameters and symbolic references (`networkSecurityGroup: { id: nsg.id }`), read-only properties (`provisioningState`, `resourceGuid`, `etag`) removed, any child resources that repeat an inline array removed so each subnet and rule is declared once, and default values dropped. The export covers the resources *in* the group, not the group itself, so `main.bicep` adds the resource group at subscription scope and calls the module.
+The portal can export Bicep directly (resource group > Export template > Bicep). Learn's Bicep export page says Bicep can only be exported from the portal; the Azure CLI 2.91 used here also has `az group export --export-format bicep` (add `-o tsv`: the default JSON output wraps the Bicep in one quoted string), which gives the same content and the same errors. Either way, Learn is clear that an export is a starting point, not a production template: it's generated from the published schemas, includes properties you wouldn't set, parameterises names without defaults and hard-codes most values.
+
+The clean-up, as done in `modules/network.bicep`: generated parameter names (in the style `virtualNetworks_vnet_alz_brownfield_uksouth_name`) and hard-coded IDs replaced with parameters and symbolic references (`networkSecurityGroup: { id: nsg.id }`), read-only properties (`provisioningState`, `resourceGuid`, `etag`) removed, any child resources that repeat an inline array removed so each subnet and rule is declared once, and default values dropped, except the VNet's `privateEndpointVNetPolicies: 'Disabled'`: it's the default, but without it what-if reports `Delete properties.privateEndpointVNetPolicies` on every run, which the drift check would count as drift. The export covers the resources *in* the group, not the group itself, so `main.bicep` adds the resource group at subscription scope and calls the module.
 
 **Adopt into a stack.** Creating a deployment stack from a template that describes existing resources deploys the same definitions over them (nothing changes) and records each one as **managed** by the stack:
 
@@ -131,7 +135,7 @@ az stack sub show --name ch15-brownfield --query "resources[].{id:id, status:sta
 az stack sub delete --name ch15-brownfield --action-on-unmanage deleteAll --yes
 ```
 
-`deleteAll` deletes the managed resource group with the VNet and NSG. With `detachAll` instead, the stack goes and the resources stay (then `az group delete --name rg-alz-brownfield-uksouth --yes`).
+`deleteAll` deletes the managed resource group with the VNet and NSG (about 7 minutes in the deploy test). With `detachAll` instead, the stack goes and the resources stay (then `az group delete --name rg-alz-brownfield-uksouth --yes`). Either way the stack's own subscription deployment record (`ch15-brownfield-<suffix>`) stays in the deployment history; delete it with `az deployment sub delete --name <name>` (find it with `az deployment sub list --query "[?starts_with(name,'ch15-brownfield')].name" -o tsv`).
 
 ## 3. Drift detection
 
@@ -165,11 +169,11 @@ az role assignment create --assignee-object-id <plan identity principal ID> --as
   --role "Deployment What-If Reader" --scope /subscriptions/$SUB
 ```
 
-Copy the workflow to `.github/workflows/drift-bicep.yml` and test it the same way. It runs `az deployment sub what-if --result-format FullResourcePayloads --no-pretty-print`, keeps changes that aren't `NoChange` or `Ignore` (ignoring a `Modify` whose property changes are all `NoEffect`), and opens, updates or closes the issue **Drift detected: chapters/15-brownfield-day-two/bicep**.
+Copy the workflow to `.github/workflows/drift-bicep.yml` and test it the same way. It runs `az deployment sub what-if --result-format FullResourcePayloads --no-pretty-print`, keeps changes that aren't `NoChange` or `Ignore` (ignoring a `Modify` whose property changes are all `NoEffect`), and opens, updates or closes the issue **Drift detected: chapters/15-brownfield-day-two/bicep**. In the deploy test the filter gave 0 on the adopted resources and 2 after `simulate-drift.sh` (`Modify` of the NSG with an `Array` change whose child is a `Delete` of `emergency-rdp`, and `Modify` of the VNet with `tags.environment: production => test`).
 
 Why not `--result-format ResourceIdOnly`? With it, what-if reports a resource that exists and is in the template as **Deploy**, because it doesn't compare properties: every run would look the same, drift or not.
 
-**Noise.** Deployment what-if compares the template with the resources as Azure returns them, and resource providers add defaults and computed values the template doesn't set, so some `Modify` results aren't real changes. The cleaned template states the values the brownfield script set, to keep noise down; the deploy test shows whether any remains. **Deployment stacks** have a what-if of their own that filters noise against a baseline recorded at each stack deployment (stacks created or updated on or after 13 August 2026):
+**Noise.** Deployment what-if compares the template with the resources as Azure returns them, and resource providers add defaults and computed values the template doesn't set, so some `Modify` results aren't real changes. The cleaned template states the values the brownfield script set (and `privateEndpointVNetPolicies`), to keep noise down; in the deploy test, deployment what-if then reported `NoChange` for all three resources, before and after adoption. **Deployment stacks** have a what-if of their own that filters noise against a baseline recorded at each stack deployment (stacks created or updated on or after 13 August 2026):
 
 ```bash
 az stack-whatif sub create --name ch15-drift --location uksouth \
@@ -178,7 +182,9 @@ az stack-whatif sub create --name ch15-drift --location uksouth \
   --action-on-unmanage detachAll --deny-settings-mode none --retention-interval PT3H
 ```
 
-It creates a what-if *result resource* (`Microsoft.Resources/deploymentStacksWhatIfResults`) rather than returning an operation result, and needs `Microsoft.Resources/deploymentStacksWhatIfResults/write`. The retention interval is documented inconsistently: Learn says `PT1H` to `PT3H` (and uses `PT3H`, as above), while the Azure CLI 2.91 help says between 1 and 30 days; if the CLI rejects `PT3H`, use `P1D`. The workflow uses deployment what-if because its JSON output is documented; switch to the stack what-if when you've confirmed its output format in your tenant.
+It creates a what-if *result resource* (`Microsoft.Resources/deploymentStacksWhatIfResults`) rather than returning an operation result, and needs `Microsoft.Resources/deploymentStacksWhatIfResults/write`. The retention interval must be `PT1H` to `PT3H`, as Learn says. The Azure CLI 2.91 help says between 1 and 30 days, but that's wrong: the CLI passes `PT3H` and `PT1H` through, and Azure rejects `P1D` with `DeploymentStackInvalidRetentionInterval` ("must be between 1 hour and 3 hours"). Results expire on their own; `az stack-whatif sub list` and `az stack-whatif sub delete --name <name> --yes` manage them.
+
+By default the command prints a coloured summary (= NoChange, ~ Modify, v Detach, with management and deny status per resource). For JSON add `--no-pretty-print -o json` (or read a stored result with `az stack-whatif sub show --name <name> --no-pretty-print --with-property-changes -o json`). Its shape differs from deployment what-if: the changes are in `properties.changes.resourceChanges[]`, each with `id`, `changeType` in lower camel case (`noChange`, `modify`, ...), `managementStatusChange` and `denyStatusChange` (`before`/`after`), and `resourceConfigurationChanges.before`/`after`/`delta[]`, where each delta entry has `path`, `changeType` (`array`, `delete`, `modify`, ...) and `children`; there's also `properties.changes.denySettingsChange`. With the drift from `simulate-drift.sh` it reported the NSG and the VNet as `modify` (`properties.securityRules` with a `delete` child for `emergency-rdp`, and `tags.environment`), the same as deployment what-if. The workflow uses deployment what-if; its jq filter doesn't read the stack shape, so switching to stack what-if means rewriting the filter for these field names.
 
 ## Inputs
 
